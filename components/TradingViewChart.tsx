@@ -366,22 +366,27 @@ const TradingViewChart: React.FC<ChartProps> = ({
   // Layout calculations
   const layout = useMemo(() => {
     const margin = { top: 10, right: 80, bottom: 30, left: 10 };
-    const chartHeight = activeIndicators.rsi || activeIndicators.macd 
-      ? dimensions.height * 0.55 
-      : activeIndicators.volume 
-        ? dimensions.height * 0.7 
-        : dimensions.height * 0.85;
-    const volumeHeight = activeIndicators.volume ? dimensions.height * 0.15 : 0;
-    const indicatorHeight = (activeIndicators.rsi || activeIndicators.macd) ? dimensions.height * 0.2 : 0;
+    const totalHeight = dimensions.height - margin.top - margin.bottom;
+    
+    // Calculate heights based on active indicators
+    const volumeHeight = activeIndicators.volume ? 60 : 0; // Fixed height for volume
+    const indicatorHeight = (activeIndicators.rsi || activeIndicators.macd) ? totalHeight * 0.2 : 0;
+    const chartHeight = totalHeight - volumeHeight - indicatorHeight;
+    
+    // Volume always at bottom, indicator above volume if present
+    const volumeTop = dimensions.height - margin.bottom - volumeHeight;
+    const indicatorTop = activeIndicators.volume 
+      ? volumeTop - indicatorHeight - 5
+      : dimensions.height - margin.bottom - indicatorHeight;
     
     return {
       margin,
       width: dimensions.width - margin.left - margin.right,
-      chartHeight: chartHeight - margin.top,
-      volumeTop: chartHeight + 5,
-      volumeHeight: volumeHeight - 10,
-      indicatorTop: chartHeight + volumeHeight + 10,
-      indicatorHeight: indicatorHeight - 20
+      chartHeight: chartHeight,
+      volumeTop: volumeTop,
+      volumeHeight: volumeHeight,
+      indicatorTop: indicatorTop,
+      indicatorHeight: indicatorHeight
     };
   }, [dimensions, activeIndicators]);
 
@@ -449,6 +454,20 @@ const TradingViewChart: React.FC<ChartProps> = ({
     // Clear
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+    
+    // Draw watermark "FINSENSEI AI" in center
+    ctx.save();
+    ctx.globalAlpha = isDark ? 0.04 : 0.06;
+    ctx.font = 'bold 48px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = isDark ? '#ffffff' : '#1e293b';
+    ctx.fillText('FINSENSEI AI', dimensions.width / 2, dimensions.height / 2 - 20);
+    
+    // Smaller tagline
+    ctx.font = '16px Inter, sans-serif';
+    ctx.fillText('Smart Stock Analysis', dimensions.width / 2, dimensions.height / 2 + 25);
+    ctx.restore();
     
     const { margin, width, chartHeight, volumeTop, volumeHeight, indicatorTop, indicatorHeight } = layout;
     const rightPadding = 50; // Khoảng cách từ nến cuối đến lề phải
@@ -681,7 +700,7 @@ const TradingViewChart: React.FC<ChartProps> = ({
       ctx.stroke();
     });
     
-    // Draw candlesticks
+    // Draw candlesticks with enhanced styling
     visibleData.forEach((candle, i) => {
       const x = indexToX(i);
       const isUp = candle.close >= candle.open;
@@ -692,24 +711,48 @@ const TradingViewChart: React.FC<ChartProps> = ({
       const highY = priceToY(candle.high);
       const lowY = priceToY(candle.low);
       
-      // Wick
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
+      // Wick with gradient effect
+      const wickGradient = ctx.createLinearGradient(x, highY, x, lowY);
+      wickGradient.addColorStop(0, isUp ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)');
+      wickGradient.addColorStop(0.5, color);
+      wickGradient.addColorStop(1, isUp ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)');
+      
+      ctx.strokeStyle = wickGradient;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x, highY);
       ctx.lineTo(x, lowY);
       ctx.stroke();
       
-      // Body
+      // Body with subtle glow for significant candles
       const bodyTop = Math.min(openY, closeY);
-      const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+      const bodyHeight = Math.max(2, Math.abs(closeY - openY));
+      const priceChange = Math.abs(candle.close - candle.open) / candle.open;
       
+      // Add glow for significant price moves (>2%)
+      if (priceChange > 0.02) {
+        ctx.shadowColor = isUp ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+        ctx.shadowBlur = 6;
+      }
+      
+      // Draw rounded body
+      const radius = Math.min(2, candleWidth / 4);
       ctx.fillStyle = color;
-      ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+      ctx.beginPath();
+      ctx.roundRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight, radius);
+      ctx.fill();
       
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      
+      // Border for bearish candles
       if (!isUp) {
         ctx.strokeStyle = color;
-        ctx.strokeRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight, radius);
+        ctx.stroke();
       }
     });
 
@@ -723,7 +766,7 @@ const TradingViewChart: React.FC<ChartProps> = ({
           
           if (pt.type === 'peak') {
             // Draw peak marker (đỉnh) - triangle pointing down above the candle
-            ctx.fillStyle = '#f59e0b'; // Amber color
+            ctx.fillStyle = '#eab308'; // Yellow color
             ctx.beginPath();
             ctx.moveTo(x, y - 15);
             ctx.lineTo(x - 6, y - 25);
@@ -817,29 +860,62 @@ const TradingViewChart: React.FC<ChartProps> = ({
     }
 
     
-    // Draw volume bars
+    // Draw volume bars with gradient
     if (activeIndicators.volume) {
+      // Find max volume for highlighting
+      const maxVol = Math.max(...visibleData.map(d => d.volume));
+      
       visibleData.forEach((candle, i) => {
         const x = indexToX(i);
         const isUp = candle.close >= candle.open;
         const barHeight = (candle.volume / volumeScale.max) * volumeHeight;
+        const barTop = volumeTop + volumeHeight - barHeight;
         
-        ctx.fillStyle = isUp ? colors.volumeUp : colors.volumeDown;
-        ctx.fillRect(
-          x - candleWidth / 2,
-          volumeTop + volumeHeight - barHeight,
-          candleWidth,
-          barHeight
-        );
+        // Create gradient for volume bars
+        const volGradient = ctx.createLinearGradient(x, barTop, x, volumeTop + volumeHeight);
+        if (isUp) {
+          volGradient.addColorStop(0, isDark ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.6)');
+          volGradient.addColorStop(1, isDark ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)');
+        } else {
+          volGradient.addColorStop(0, isDark ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.6)');
+          volGradient.addColorStop(1, isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.1)');
+        }
+        
+        // Highlight max volume bar
+        if (candle.volume === maxVol) {
+          ctx.shadowColor = isUp ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)';
+          ctx.shadowBlur = 8;
+        }
+        
+        ctx.fillStyle = volGradient;
+        const radius = Math.min(2, candleWidth / 4);
+        ctx.beginPath();
+        ctx.roundRect(x - candleWidth / 2, barTop, candleWidth, barHeight, [radius, radius, 0, 0]);
+        ctx.fill();
+        
+        // Reset shadow
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
       });
       
-      // Volume separator line
-      ctx.strokeStyle = colors.grid;
+      // Volume separator line with gradient
+      const sepGradient = ctx.createLinearGradient(margin.left, 0, margin.left + width, 0);
+      sepGradient.addColorStop(0, 'transparent');
+      sepGradient.addColorStop(0.1, colors.grid);
+      sepGradient.addColorStop(0.9, colors.grid);
+      sepGradient.addColorStop(1, 'transparent');
+      
+      ctx.strokeStyle = sepGradient;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(margin.left, volumeTop - 5);
       ctx.lineTo(margin.left + width, volumeTop - 5);
       ctx.stroke();
+      
+      // Volume label
+      ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.6)' : 'rgba(100, 116, 139, 0.6)';
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillText('Vol', margin.left + 5, volumeTop + 12);
     }
     
     // Draw RSI

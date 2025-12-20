@@ -39,8 +39,8 @@ const StockHealth: React.FC<StockHealthProps> = ({ stock: propStock, news, isDar
           setStock({
             ticker: topStock.symbol,
             name: company?.company_name || topStock.symbol,
-            price: topStock.close_price * 1000,
-            change: Math.round(priceChange * 1000),
+            price: topStock.close_price,
+            change: Math.round(priceChange),
             changePercent: Math.round(changePercent * 100) / 100,
             currency: 'VND',
             rsRating: Math.min(95, Math.floor(topStock.volume / 100000)),

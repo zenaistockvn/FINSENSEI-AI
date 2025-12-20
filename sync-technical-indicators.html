@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Technical Indicators - Finsensei AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-2">📊 Sync Technical Indicators</h1>
+    <p class="text-slate-400 mb-6">Tính toán và lưu các chỉ số PTKT cho tất cả cổ phiếu VN100</p>
+    
+    <div class="bg-slate-800 rounded-xl p-6 mb-6">
+      <h2 class="text-lg font-bold mb-4">Các chỉ số được tính toán:</h2>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">RS Rating</span>
+          <p class="text-slate-400 text-xs">Relative Strength 0-100</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">RSI (14)</span>
+          <p class="text-slate-400 text-xs">Relative Strength Index</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">MACD</span>
+          <p class="text-slate-400 text-xs">Moving Average Convergence</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">MA20/50/200</span>
+          <p class="text-slate-400 text-xs">Moving Averages</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">Volatility</span>
+          <p class="text-slate-400 text-xs">Biến động năm hóa</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">ATR (14)</span>
+          <p class="text-slate-400 text-xs">Average True Range</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">Volume Ratio</span>
+          <p class="text-slate-400 text-xs">KL / KL TB 20</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">Price Position</span>
+          <p class="text-slate-400 text-xs">Vị thế trong 52 tuần</p>
+        </div>
+        <div class="bg-slate-700/50 p-3 rounded-lg">
+          <span class="text-cyan-400 font-bold">Trend Signals</span>
+          <p class="text-slate-400 text-xs">Golden/Death Cross</p>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex gap-4 mb-6">
+      <button 
+        id="syncBtn"
+        onclick="startSync()"
+        class="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl font-bold transition-all"
+      >
+        🚀 Bắt đầu Sync
+      </button>
+      <button 
+        onclick="clearLog()"
+        class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition-all"
+      >
+        🗑️ Xóa Log
+      </button>
+    </div>
+    
+    <div class="bg-slate-800 rounded-xl p-4">
+      <h3 class="text-sm font-bold text-slate-400 mb-2">📋 Log:</h3>
+      <div id="log" class="font-mono text-sm h-96 overflow-y-auto bg-slate-900 rounded-lg p-4 space-y-1">
+        <p class="text-slate-500">Nhấn "Bắt đầu Sync" để tính toán chỉ số PTKT...</p>
+      </div>
+    </div>
+    
+    <div class="mt-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+      <h3 class="font-bold text-amber-400 mb-2">⚠️ Lưu ý:</h3>
+      <ul class="text-sm text-slate-300 space-y-1">
+        <li>• Cần chạy SQL script <code class="bg-slate-700 px-1 rounded">create-technical-indicators-table.sql</code> trước</li>
+        <li>• Quá trình sync mất khoảng 2-3 phút cho 100 cổ phiếu</li>
+        <li>• Nên chạy hàng ngày sau khi đóng cửa thị trường</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+    const headers = {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal"
+    };
+
+    function log(msg) {
+      const logDiv = document.getElementById('log');
+      const time = new Date().toLocaleTimeString('vi-VN');
+      const p = document.createElement('p');
+      
+      if (msg.includes('❌')) p.className = 'text-rose-400';
+      else if (msg.includes('✅')) p.className = 'text-emerald-400';
+      else if (msg.includes('⚠️')) p.className = 'text-amber-400';
+      else if (msg.includes('📈') || msg.includes('💾')) p.className = 'text-cyan-400';
+      else p.className = 'text-slate-300';
+      
+      p.textContent = `[${time}] ${msg}`;
+      logDiv.appendChild(p);
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '<p class="text-slate-500">Log đã được xóa...</p>';
+    }
+
+    // ============ TECHNICAL CALCULATIONS ============
+    
+    function calculateEMA(data, period) {
+      if (data.length < period) return null;
+      const k = 2 / (period + 1);
+      let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+      for (let i = period; i < data.length; i++) {
+        ema = data[i] * k + ema * (1 - k);
+      }
+      return ema;
+    }
+
+    function calculateSMA(data, period) {
+      if (data.length < period) return null;
+      return data.slice(-period).reduce((a, b) => a + b, 0) / period;
+    }
+
+    function calculateRSI(closes, period = 14) {
+      if (closes.length < period + 1) return null;
+      const changes = [];
+      for (let i = 1; i < closes.length; i++) {
+        changes.push(closes[i] - closes[i - 1]);
+      }
+      const recentChanges = changes.slice(-period);
+      const gains = recentChanges.filter(c => c > 0);
+      const losses = recentChanges.filter(c => c < 0).map(c => Math.abs(c));
+      const avgGain = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / period : 0;
+      const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / period : 0;
+      if (avgLoss === 0) return 100;
+      const rs = avgGain / avgLoss;
+      return 100 - (100 / (1 + rs));
+    }
+
+    function calculateMACD(closes) {
+      if (closes.length < 26) return { macd: null, signal: null, histogram: null };
+      const ema12 = calculateEMA(closes, 12);
+      const ema26 = calculateEMA(closes, 26);
+      const macd = ema12 - ema26;
+      const macdLine = [];
+      for (let i = 25; i < closes.length; i++) {
+        const e12 = calculateEMA(closes.slice(0, i + 1), 12);
+        const e26 = calculateEMA(closes.slice(0, i + 1), 26);
+        macdLine.push(e12 - e26);
+      }
+      const signal = macdLine.length >= 9 ? calculateEMA(macdLine, 9) : null;
+      const histogram = signal !== null ? macd - signal : null;
+      return { macd, signal, histogram };
+    }
+
+    function calculateATR(highs, lows, closes, period = 14) {
+      if (highs.length < period + 1) return null;
+      const trueRanges = [];
+      for (let i = 1; i < highs.length; i++) {
+        const tr = Math.max(
+          highs[i] - lows[i],
+          Math.abs(highs[i] - closes[i - 1]),
+          Math.abs(lows[i] - closes[i - 1])
+        );
+        trueRanges.push(tr);
+      }
+      return calculateSMA(trueRanges, period);
+    }
+
+    function calculateVolatility(closes, period = 20) {
+      if (closes.length < period + 1) return null;
+      const returns = [];
+      for (let i = closes.length - period; i < closes.length; i++) {
+        returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+      }
+      const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+      const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+      return Math.sqrt(variance) * Math.sqrt(252) * 100;
+    }
+
+    function calculateRSRating(closes) {
+      if (closes.length < 60) return null;
+      const n = closes.length;
+      const currentPrice = closes[n - 1];
+      const return3m = n >= 63 ? ((currentPrice - closes[n - 63]) / closes[n - 63]) * 100 : null;
+      const return6m = n >= 126 ? ((currentPrice - closes[n - 126]) / closes[n - 126]) * 100 : null;
+      const return9m = n >= 189 ? ((currentPrice - closes[n - 189]) / closes[n - 189]) * 100 : null;
+      const return12m = n >= 252 ? ((currentPrice - closes[n - 252]) / closes[n - 252]) * 100 : null;
+      
+      let weightedReturn = 0;
+      let totalWeight = 0;
+      if (return3m !== null) { weightedReturn += return3m * 0.4; totalWeight += 0.4; }
+      if (return6m !== null) { weightedReturn += return6m * 0.2; totalWeight += 0.2; }
+      if (return9m !== null) { weightedReturn += return9m * 0.2; totalWeight += 0.2; }
+      if (return12m !== null) { weightedReturn += return12m * 0.2; totalWeight += 0.2; }
+      if (totalWeight === 0) return null;
+      weightedReturn = weightedReturn / totalWeight;
+      return Math.max(0, Math.min(100, ((weightedReturn + 50) / 150) * 100));
+    }
+
+    function determineTrend(closes, ma20, ma50) {
+      if (closes.length < 5) return { shortTrend: 'SIDEWAYS', mediumTrend: 'SIDEWAYS' };
+      const n = closes.length;
+      const currentPrice = closes[n - 1];
+      const price5dAgo = closes[n - 5];
+      const shortChange = ((currentPrice - price5dAgo) / price5dAgo) * 100;
+      let shortTrend = 'SIDEWAYS';
+      if (shortChange > 2) shortTrend = 'UP';
+      else if (shortChange < -2) shortTrend = 'DOWN';
+      let mediumTrend = 'SIDEWAYS';
+      if (ma20 && ma50) {
+        if (currentPrice > ma20 && ma20 > ma50) mediumTrend = 'UP';
+        else if (currentPrice < ma20 && ma20 < ma50) mediumTrend = 'DOWN';
+      }
+      return { shortTrend, mediumTrend };
+    }
+
+    function calculateMACrossSignal(closes, period = 5) {
+      if (closes.length < 50 + period) return 'NONE';
+      const n = closes.length;
+      const ma20Now = calculateSMA(closes.slice(0, n), 20);
+      const ma50Now = calculateSMA(closes.slice(0, n), 50);
+      const ma20Prev = calculateSMA(closes.slice(0, n - period), 20);
+      const ma50Prev = calculateSMA(closes.slice(0, n - period), 50);
+      if (!ma20Now || !ma50Now || !ma20Prev || !ma50Prev) return 'NONE';
+      if (ma20Prev <= ma50Prev && ma20Now > ma50Now) return 'GOLDEN_CROSS';
+      if (ma20Prev >= ma50Prev && ma20Now < ma50Now) return 'DEATH_CROSS';
+      return 'NONE';
+    }
+
+    function calculateScores(indicators) {
+      let momentumScore = 50;
+      if (indicators.rsi_14) {
+        if (indicators.rsi_14 >= 50 && indicators.rsi_14 <= 70) momentumScore += 20;
+        else if (indicators.rsi_14 > 70) momentumScore += 10;
+        else if (indicators.rsi_14 < 30) momentumScore -= 10;
+      }
+      if (indicators.macd_histogram > 0) momentumScore += 15;
+      if (indicators.price_change_5d > 0) momentumScore += 15;
+      momentumScore = Math.max(0, Math.min(100, momentumScore));
+      
+      let trendScore = 50;
+      if (indicators.price_vs_ma20 > 0) trendScore += 15;
+      if (indicators.price_vs_ma50 > 0) trendScore += 15;
+      if (indicators.trend_short === 'UP') trendScore += 10;
+      if (indicators.trend_medium === 'UP') trendScore += 10;
+      if (indicators.ma_cross_signal === 'GOLDEN_CROSS') trendScore += 20;
+      else if (indicators.ma_cross_signal === 'DEATH_CROSS') trendScore -= 20;
+      trendScore = Math.max(0, Math.min(100, trendScore));
+      
+      let volumeScore = 50;
+      if (indicators.volume_ratio > 1.5) volumeScore += 30;
+      else if (indicators.volume_ratio > 1) volumeScore += 15;
+      else if (indicators.volume_ratio < 0.5) volumeScore -= 20;
+      volumeScore = Math.max(0, Math.min(100, volumeScore));
+      
+      const overallScore = (momentumScore * 0.35 + trendScore * 0.4 + volumeScore * 0.25);
+      return {
+        momentum_score: Math.round(momentumScore * 100) / 100,
+        trend_score: Math.round(trendScore * 100) / 100,
+        volume_score: Math.round(volumeScore * 100) / 100,
+        overall_technical_score: Math.round(overallScore * 100) / 100
+      };
+    }
+
+    function calculateAllIndicators(priceData) {
+      if (!priceData || priceData.length < 20) return null;
+      
+      const sorted = [...priceData].sort((a, b) => new Date(a.trading_date) - new Date(b.trading_date));
+      const closes = sorted.map(p => p.close_price);
+      const highs = sorted.map(p => p.high_price);
+      const lows = sorted.map(p => p.low_price);
+      const volumes = sorted.map(p => p.volume);
+      const n = closes.length;
+      const currentPrice = closes[n - 1];
+      const currentVolume = volumes[n - 1];
+      
+      const priceChange1d = n >= 2 ? ((closes[n - 1] - closes[n - 2]) / closes[n - 2]) * 100 : null;
+      const priceChange5d = n >= 5 ? ((closes[n - 1] - closes[n - 5]) / closes[n - 5]) * 100 : null;
+      const priceChange20d = n >= 20 ? ((closes[n - 1] - closes[n - 20]) / closes[n - 20]) * 100 : null;
+      const priceChange60d = n >= 60 ? ((closes[n - 1] - closes[n - 60]) / closes[n - 60]) * 100 : null;
+      
+      const ma20 = calculateSMA(closes, 20);
+      const ma50 = calculateSMA(closes, 50);
+      const ma200 = calculateSMA(closes, 200);
+      const priceVsMa20 = ma20 ? ((currentPrice - ma20) / ma20) * 100 : null;
+      const priceVsMa50 = ma50 ? ((currentPrice - ma50) / ma50) * 100 : null;
+      
+      const rsi14 = calculateRSI(closes, 14);
+      const { macd, signal: macdSignal, histogram: macdHistogram } = calculateMACD(closes);
+      const rsRating = calculateRSRating(closes);
+      const volatility20d = calculateVolatility(closes, 20);
+      const atr14 = calculateATR(highs, lows, closes, 14);
+      const volumeAvg20d = calculateSMA(volumes, 20);
+      const volumeRatio = volumeAvg20d ? currentVolume / volumeAvg20d : null;
+      
+      const high52w = Math.max(...highs.slice(-252));
+      const low52w = Math.min(...lows.slice(-252));
+      const pricePosition = high52w !== low52w ? ((currentPrice - low52w) / (high52w - low52w)) * 100 : 50;
+      const distanceFromHigh = ((currentPrice - high52w) / high52w) * 100;
+      
+      const { shortTrend, mediumTrend } = determineTrend(closes, ma20, ma50);
+      const maCrossSignal = calculateMACrossSignal(closes);
+      
+      const indicators = {
+        current_price: currentPrice,
+        price_change_1d: priceChange1d,
+        price_change_5d: priceChange5d,
+        price_change_20d: priceChange20d,
+        price_change_60d: priceChange60d,
+        rs_rating: rsRating,
+        ma20, ma50, ma200,
+        price_vs_ma20: priceVsMa20,
+        price_vs_ma50: priceVsMa50,
+        rsi_14: rsi14,
+        macd, macd_signal: macdSignal, macd_histogram: macdHistogram,
+        volatility_20d: volatility20d,
+        atr_14: atr14,
+        volume_avg_20d: volumeAvg20d ? Math.round(volumeAvg20d) : null,
+        volume_ratio: volumeRatio,
+        price_position: pricePosition,
+        high_52w: high52w, low_52w: low52w,
+        distance_from_high: distanceFromHigh,
+        trend_short: shortTrend,
+        trend_medium: mediumTrend,
+        ma_cross_signal: maCrossSignal
+      };
+      
+      const scores = calculateScores(indicators);
+      return { ...indicators, ...scores };
+    }
+
+    // ============ API FUNCTIONS ============
+
+    async function getVN100Companies() {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/companies?is_vn100=eq.true&is_active=eq.true&select=symbol`,
+        { headers: { ...headers, "Prefer": "return=representation" } }
+      );
+      return response.json();
+    }
+
+    async function getStockPrices(symbol, days = 300) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/stock_prices?symbol=eq.${symbol}&order=trading_date.desc&limit=${days}`,
+        { headers: { ...headers, "Prefer": "return=representation" } }
+      );
+      return response.json();
+    }
+
+    async function upsertTechnicalIndicators(data) {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/technical_indicators`,
+        {
+          method: 'POST',
+          headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify(data)
+        }
+      );
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to upsert: ${error}`);
+      }
+      return true;
+    }
+
+    // ============ MAIN SYNC ============
+
+    async function startSync() {
+      const btn = document.getElementById('syncBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Đang xử lý...';
+      btn.className = 'px-6 py-3 bg-slate-600 rounded-xl font-bold cursor-not-allowed';
+      
+      clearLog();
+      log('🚀 Bắt đầu tính toán chỉ số PTKT...');
+      
+      try {
+        const companies = await getVN100Companies();
+        log(`📊 Tìm thấy ${companies.length} cổ phiếu VN100`);
+        
+        const today = new Date().toISOString().split('T')[0];
+        let successCount = 0;
+        let errorCount = 0;
+        const allIndicators = [];
+        
+        for (let i = 0; i < companies.length; i++) {
+          const { symbol } = companies[i];
+          
+          try {
+            const prices = await getStockPrices(symbol, 300);
+            
+            if (prices.length < 20) {
+              log(`⚠️ ${symbol}: Không đủ dữ liệu (${prices.length} ngày)`);
+              errorCount++;
+              continue;
+            }
+            
+            const indicators = calculateAllIndicators(prices);
+            
+            if (!indicators) {
+              log(`⚠️ ${symbol}: Không thể tính toán chỉ số`);
+              errorCount++;
+              continue;
+            }
+            
+            const record = {
+              symbol,
+              calculation_date: today,
+              ...indicators,
+              updated_at: new Date().toISOString()
+            };
+            
+            allIndicators.push(record);
+            successCount++;
+            
+            if ((i + 1) % 10 === 0) {
+              log(`📈 Đã xử lý ${i + 1}/${companies.length} cổ phiếu...`);
+            }
+            
+            await new Promise(r => setTimeout(r, 50));
+            
+          } catch (err) {
+            log(`❌ ${symbol}: ${err.message}`);
+            errorCount++;
+          }
+        }
+        
+        if (allIndicators.length > 0) {
+          log(`💾 Đang lưu ${allIndicators.length} bản ghi vào database...`);
+          
+          for (let i = 0; i < allIndicators.length; i += 50) {
+            const batch = allIndicators.slice(i, i + 50);
+            await upsertTechnicalIndicators(batch);
+            log(`  ✅ Đã lưu batch ${Math.floor(i / 50) + 1}`);
+          }
+        }
+        
+        log(`\n✅ HOÀN THÀNH!`);
+        log(`   - Thành công: ${successCount} cổ phiếu`);
+        log(`   - Lỗi: ${errorCount} cổ phiếu`);
+        
+      } catch (error) {
+        log(`❌ Lỗi: ${error.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 Bắt đầu Sync';
+        btn.className = 'px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl font-bold transition-all';
+      }
+    }
+  </script>
+</body>
+</html>

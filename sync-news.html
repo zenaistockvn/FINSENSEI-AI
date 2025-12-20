@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Stock News - FinSensei AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-2">📰 Sync Stock News</h1>
+    <p class="text-slate-400 mb-8">Tạo bảng và đồng bộ tin tức lên Supabase</p>
+
+    <div class="bg-slate-800 rounded-xl p-6 mb-6">
+      <h2 class="text-xl font-bold mb-4">Step 1: Tạo bảng stock_news (SQL)</h2>
+      <p class="text-slate-400 text-sm mb-4">Copy SQL này vào Supabase Dashboard > SQL Editor:</p>
+      <pre class="bg-slate-900 p-4 rounded-lg text-xs overflow-x-auto mb-4 text-emerald-400">CREATE TABLE IF NOT EXISTS stock_news (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(20),
+  title VARCHAR(500) NOT NULL,
+  summary TEXT,
+  source VARCHAR(100),
+  url VARCHAR(500),
+  published_at TIMESTAMPTZ DEFAULT NOW(),
+  sentiment VARCHAR(20) DEFAULT 'neutral',
+  ai_summary TEXT,
+  category VARCHAR(50) DEFAULT 'general',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(title, source)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_news_symbol ON stock_news(symbol);
+CREATE INDEX IF NOT EXISTS idx_stock_news_published ON stock_news(published_at DESC);
+ALTER TABLE stock_news ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read" ON stock_news FOR SELECT USING (true);
+CREATE POLICY "Allow service insert" ON stock_news FOR INSERT WITH CHECK (true);</pre>
+      <button onclick="checkTable()" class="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-lg font-bold mb-4">
+        Kiểm tra bảng đã tạo chưa
+      </button>
+      <div id="createResult" class="text-sm"></div>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl p-6 mb-6">
+      <h2 class="text-xl font-bold mb-4">Step 2: Sync tin tức</h2>
+      <button onclick="syncNews()" class="bg-emerald-600 hover:bg-emerald-700 px-6 py-3 rounded-lg font-bold mb-4">
+        Sync Tin Tức
+      </button>
+      <div id="syncResult" class="text-sm"></div>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl p-6 mb-6">
+      <h2 class="text-xl font-bold mb-4">Step 3: Kiểm tra</h2>
+      <button onclick="checkNews()" class="bg-amber-600 hover:bg-amber-700 px-6 py-3 rounded-lg font-bold mb-4">
+        Kiểm tra
+      </button>
+      <div id="checkResult" class="text-sm"></div>
+    </div>
+
+    <div class="bg-slate-800 rounded-xl p-6">
+      <h2 class="text-lg font-bold mb-4">Log</h2>
+      <div id="log" class="bg-slate-900 rounded-lg p-4 h-48 overflow-y-auto font-mono text-xs"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+    const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+
+    function log(msg, type = 'info') {
+      const logEl = document.getElementById('log');
+      const colors = { info: 'text-slate-300', success: 'text-emerald-400', error: 'text-rose-400' };
+      logEl.innerHTML += `<div class="${colors[type]}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function checkTable() {
+      const resultEl = document.getElementById('createResult');
+      resultEl.innerHTML = '<span class="text-amber-400">Checking...</span>';
+      
+      const checkResponse = await fetch(`${SUPABASE_URL}/rest/v1/stock_news?limit=1`, {
+        headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` }
+      });
+      
+      if (checkResponse.ok) {
+        resultEl.innerHTML = '<span class="text-emerald-400">✅ Bảng đã tồn tại! Có thể sync tin tức.</span>';
+        log('Table exists!', 'success');
+      } else {
+        resultEl.innerHTML = '<span class="text-rose-400">❌ Bảng chưa tồn tại. Vui lòng copy SQL ở trên và chạy trong Supabase Dashboard.</span>';
+        log('Table not found. Please create it first.', 'error');
+      }
+    }
+
+    const NEWS = [
+      { symbol: null, title: "VN-Index vượt mốc 1,280 điểm, thanh khoản tăng mạnh", summary: "Thị trường chứng khoán Việt Nam tiếp tục đà tăng với thanh khoản cải thiện đáng kể.", source: "CafeF", sentiment: "positive", category: "market" },
+      { symbol: null, title: "NHNN giữ nguyên lãi suất điều hành", summary: "Ngân hàng Nhà nước quyết định giữ nguyên các mức lãi suất điều hành.", source: "VnExpress", sentiment: "positive", category: "macro" },
+      { symbol: null, title: "Khối ngoại mua ròng hơn 500 tỷ đồng", summary: "Dòng tiền từ các quỹ ETF ngoại tiếp tục chảy vào thị trường Việt Nam.", source: "Vietstock", sentiment: "positive", category: "market" },
+      { symbol: "VNM", title: "Vinamilk công bố kết quả kinh doanh Q4/2024 vượt kỳ vọng", summary: "Doanh thu và lợi nhuận của Vinamilk trong quý 4/2024 đều vượt dự báo.", source: "CafeF", sentiment: "positive", category: "earnings" },
+      { symbol: "VNM", title: "Vinamilk đẩy mạnh xuất khẩu sang Trung Quốc", summary: "Công ty đang mở rộng kênh phân phối tại Trung Quốc.", source: "VnExpress", sentiment: "positive", category: "business" },
+      { symbol: "FPT", title: "FPT ký hợp đồng AI trị giá 100 triệu USD với đối tác Nhật Bản", summary: "FPT Corporation vừa ký kết hợp đồng cung cấp giải pháp AI.", source: "ĐTCK", sentiment: "positive", category: "business" },
+      { symbol: "FPT", title: "FPT đặt mục tiêu doanh thu 2025 tăng 25%", summary: "Ban lãnh đạo FPT đặt kế hoạch tăng trưởng doanh thu 25%.", source: "Vietstock", sentiment: "positive", category: "guidance" },
+      { symbol: "VCB", title: "Vietcombank dẫn đầu lợi nhuận ngành ngân hàng năm 2024", summary: "Vietcombank tiếp tục giữ vị trí quán quân về lợi nhuận.", source: "CafeF", sentiment: "positive", category: "earnings" },
+      { symbol: "HPG", title: "Hòa Phát: Sản lượng thép tháng 11 đạt kỷ lục mới", summary: "Tập đoàn Hòa Phát ghi nhận sản lượng thép cao nhất lịch sử.", source: "VnExpress", sentiment: "positive", category: "operations" },
+      { symbol: "MBB", title: "MB Bank mở rộng mạng lưới chi nhánh tại miền Nam", summary: "Ngân hàng Quân đội tiếp tục chiến lược mở rộng.", source: "ĐTCK", sentiment: "positive", category: "business" },
+      { symbol: "TCB", title: "Techcombank: Tỷ lệ CASA duy trì trên 40%", summary: "Techcombank tiếp tục duy trì tỷ lệ CASA cao nhất ngành.", source: "Vietstock", sentiment: "positive", category: "financials" },
+      { symbol: "ACB", title: "ACB tăng cường cho vay tiêu dùng", summary: "Ngân hàng ACB đẩy mạnh phân khúc cho vay tiêu dùng.", source: "CafeF", sentiment: "positive", category: "business" },
+      { symbol: "MSN", title: "Masan hoàn tất tái cấu trúc", summary: "Tập đoàn Masan đã hoàn tất quá trình tái cấu trúc.", source: "VnExpress", sentiment: "neutral", category: "business" },
+      { symbol: "VIC", title: "Vingroup đẩy mạnh phát triển VinFast tại Mỹ", summary: "VinFast tiếp tục mở rộng mạng lưới đại lý tại Mỹ.", source: "ĐTCK", sentiment: "positive", category: "business" },
+      { symbol: "GAS", title: "PV GAS hưởng lợi từ giá dầu tăng", summary: "Giá dầu thế giới tăng giúp PV GAS cải thiện biên lợi nhuận.", source: "Vietstock", sentiment: "positive", category: "earnings" }
+    ];
+
+    function aiSummary(s) {
+      return s === 'positive' ? "Tin tức tích cực, hỗ trợ tâm lý nhà đầu tư." : s === 'negative' ? "Cần theo dõi sát diễn biến." : "Thông tin trung tính.";
+    }
+
+    async function syncNews() {
+      const resultEl = document.getElementById('syncResult');
+      resultEl.innerHTML = '<span class="text-amber-400">Syncing...</span>';
+      log('Starting sync...');
+
+      const records = NEWS.map((n, i) => ({
+        ...n, url: '', published_at: new Date(Date.now() - i * 21600000).toISOString(), ai_summary: aiSummary(n.sentiment)
+      }));
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/stock_news`, {
+          method: 'POST',
+          headers: {
+            'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`,
+            'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify(records)
+        });
+
+        if (response.ok) {
+          resultEl.innerHTML = `<span class="text-emerald-400">✅ Đã sync ${records.length} tin!</span>`;
+          log(`Synced ${records.length} news!`, 'success');
+        } else {
+          const error = await response.text();
+          resultEl.innerHTML = `<span class="text-rose-400">❌ Error: ${response.status}</span>`;
+          log(`Error: ${error}`, 'error');
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="text-rose-400">❌ ${error.message}</span>`;
+        log(`Error: ${error.message}`, 'error');
+      }
+    }
+
+    async function checkNews() {
+      const resultEl = document.getElementById('checkResult');
+      resultEl.innerHTML = '<span class="text-amber-400">Checking...</span>';
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/stock_news?select=*&order=published_at.desc&limit=10`, {
+          headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          resultEl.innerHTML = `<div class="text-emerald-400 mb-2">✅ ${data.length} tin tức:</div>
+            <div class="bg-slate-900 rounded-lg p-3 max-h-48 overflow-y-auto text-xs">
+              ${data.map(n => `<div class="py-1 border-b border-slate-700">${n.symbol || 'Market'}: ${n.title}</div>`).join('')}
+            </div>`;
+          log(`Found ${data.length} news`, 'success');
+        } else {
+          resultEl.innerHTML = `<span class="text-rose-400">❌ Error</span>`;
+          log('Error checking news', 'error');
+        }
+      } catch (error) {
+        resultEl.innerHTML = `<span class="text-rose-400">❌ ${error.message}</span>`;
+      }
+    }
+
+    log('Ready!', 'info');
+  </script>
+</body>
+</html>

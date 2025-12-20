@@ -21,8 +21,26 @@ export interface Company {
   exchange: string;
   industry: string;
   sector?: string;
+  outstanding_shares?: number;
+  logo_url?: string;
   is_vn100: boolean;
   is_active: boolean;
+}
+
+// Helper function to get company logo URL
+export function getCompanyLogoUrl(symbol: string): string {
+  // Primary: Vietstock
+  return `https://finance.vietstock.vn/image/${symbol}`;
+}
+
+// Alternative logo sources
+export function getCompanyLogoUrlAlt(symbol: string, source: 'vietstock' | 'simplize' = 'vietstock'): string {
+  switch (source) {
+    case 'simplize':
+      return `https://simplize.vn/api/company/logo/${symbol}`;
+    default:
+      return `https://finance.vietstock.vn/image/${symbol}`;
+  }
 }
 
 export interface StockPrice {
@@ -66,6 +84,121 @@ export interface FinancialRatio {
   debt_to_equity?: number;
   revenue_growth?: number;
   profit_growth?: number;
+}
+
+export interface StockNews {
+  id: number;
+  symbol: string | null;
+  title: string;
+  summary: string;
+  source: string;
+  url: string;
+  published_at: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  ai_summary: string;
+  category: string;
+  created_at: string;
+}
+
+export interface AIAnalysis {
+  id: number;
+  symbol: string;
+  analysis_date: string;
+  rating: number;
+  score: number;
+  signal: number;
+  recommendation: 'MUA' | 'BÁN' | 'NẮM GIỮ' | 'THEO DÕI';
+  confidence: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RiskAnalysis {
+  id: number;
+  symbol: string;
+  analysis_date: string;
+  optimal_holding_days: number;
+  upside_probability: number;
+  downside_risk: number;
+  volatility: number;
+  beta: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TradingStrategy {
+  id: number;
+  symbol: string;
+  analysis_date: string;
+  buy_zone_low: number;
+  buy_zone_high: number;
+  stop_loss: number;
+  target_1: number;
+  target_2: number;
+  target_3: number;
+  support_1: number;
+  support_2: number;
+  resistance_1: number;
+  resistance_2: number;
+  strategy_type: string;
+  strategy_note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TechnicalIndicators {
+  id: number;
+  symbol: string;
+  calculation_date: string;
+  current_price: number;
+  price_change_1d: number;
+  price_change_5d: number;
+  price_change_20d: number;
+  price_change_60d: number;
+  rs_rating: number;
+  rs_rank: number;
+  ma20: number;
+  ma50: number;
+  ma200: number;
+  price_vs_ma20: number;
+  price_vs_ma50: number;
+  rsi_14: number;
+  macd: number;
+  macd_signal: number;
+  macd_histogram: number;
+  volatility_20d: number;
+  atr_14: number;
+  volume_avg_20d: number;
+  volume_ratio: number;
+  price_position: number;
+  high_52w: number;
+  low_52w: number;
+  distance_from_high: number;
+  trend_short: 'UP' | 'DOWN' | 'SIDEWAYS';
+  trend_medium: 'UP' | 'DOWN' | 'SIDEWAYS';
+  ma_cross_signal: 'GOLDEN_CROSS' | 'DEATH_CROSS' | 'NONE';
+  momentum_score: number;
+  trend_score: number;
+  volume_score: number;
+  overall_technical_score: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BrokerRecommendation {
+  id: number;
+  symbol: string;
+  recommendation_date: string;
+  broker_code: string;
+  broker_name: string;
+  action: 'MUA' | 'BÁN' | 'NẮM GIỮ' | 'KHẢ QUAN' | 'TRUNG LẬP' | 'TIÊU CỰC';
+  target_price: number;
+  previous_target: number;
+  rationale: string;
+  report_url: string;
+  created_at: string;
 }
 
 // API Functions
@@ -176,6 +309,30 @@ export async function getLatestFinancialRatio(symbol: string): Promise<Financial
   return data[0] || null;
 }
 
+// Stock News
+export async function getStockNews(symbol?: string, limit: number = 10): Promise<StockNews[]> {
+  let params = `order=published_at.desc&limit=${limit}`;
+  if (symbol) {
+    // Get news for specific stock OR general market news
+    params = `or=(symbol.eq.${symbol},symbol.is.null)&${params}`;
+  }
+  return fetchFromSupabase<StockNews>("stock_news", params);
+}
+
+export async function getMarketNews(limit: number = 10): Promise<StockNews[]> {
+  return fetchFromSupabase<StockNews>(
+    "stock_news",
+    `symbol=is.null&order=published_at.desc&limit=${limit}`
+  );
+}
+
+export async function getAllNews(limit: number = 20): Promise<StockNews[]> {
+  return fetchFromSupabase<StockNews>(
+    "stock_news",
+    `order=published_at.desc&limit=${limit}`
+  );
+}
+
 // Top Movers - Get stocks with highest volume/change
 export async function getTopMovers(limit: number = 10): Promise<StockPrice[]> {
   // Get latest trading date
@@ -214,6 +371,117 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   };
 }
 
+// AI Analysis
+export async function getAIAnalysis(symbol: string): Promise<AIAnalysis | null> {
+  const data = await fetchFromSupabase<AIAnalysis>(
+    "ai_analysis",
+    `symbol=eq.${symbol}&order=analysis_date.desc&limit=1`
+  );
+  return data[0] || null;
+}
+
+// Risk Analysis
+export async function getRiskAnalysis(symbol: string): Promise<RiskAnalysis | null> {
+  const data = await fetchFromSupabase<RiskAnalysis>(
+    "risk_analysis",
+    `symbol=eq.${symbol}&order=analysis_date.desc&limit=1`
+  );
+  return data[0] || null;
+}
+
+// Trading Strategy
+export async function getTradingStrategy(symbol: string): Promise<TradingStrategy | null> {
+  const data = await fetchFromSupabase<TradingStrategy>(
+    "trading_strategy",
+    `symbol=eq.${symbol}&order=analysis_date.desc&limit=1`
+  );
+  return data[0] || null;
+}
+
+// Broker Recommendations
+export async function getBrokerRecommendations(symbol: string, limit: number = 10): Promise<BrokerRecommendation[]> {
+  return fetchFromSupabase<BrokerRecommendation>(
+    "broker_recommendations",
+    `symbol=eq.${symbol}&order=recommendation_date.desc&limit=${limit}`
+  );
+}
+
+// Technical Indicators
+export async function getTechnicalIndicators(symbol: string): Promise<TechnicalIndicators | null> {
+  const data = await fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `symbol=eq.${symbol}&order=calculation_date.desc&limit=1`
+  );
+  return data[0] || null;
+}
+
+export async function getAllTechnicalIndicators(): Promise<TechnicalIndicators[]> {
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `order=calculation_date.desc,overall_technical_score.desc`
+  );
+}
+
+export async function getTopRSStocks(limit: number = 20): Promise<TechnicalIndicators[]> {
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `order=rs_rating.desc.nullslast&limit=${limit}`
+  );
+}
+
+export async function getStocksAboveMA(maType: 'ma20' | 'ma50' = 'ma20'): Promise<TechnicalIndicators[]> {
+  const field = maType === 'ma20' ? 'price_vs_ma20' : 'price_vs_ma50';
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `${field}=gt.0&order=${field}.desc`
+  );
+}
+
+export async function getOversoldStocks(): Promise<TechnicalIndicators[]> {
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `rsi_14=lt.30&order=rsi_14.asc`
+  );
+}
+
+export async function getOverboughtStocks(): Promise<TechnicalIndicators[]> {
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `rsi_14=gt.70&order=rsi_14.desc`
+  );
+}
+
+export async function getGoldenCrossStocks(): Promise<TechnicalIndicators[]> {
+  return fetchFromSupabase<TechnicalIndicators>(
+    "technical_indicators",
+    `ma_cross_signal=eq.GOLDEN_CROSS&order=overall_technical_score.desc`
+  );
+}
+
+// Get all analysis data for a stock
+export interface StockAnalysisData {
+  aiAnalysis: AIAnalysis | null;
+  riskAnalysis: RiskAnalysis | null;
+  tradingStrategy: TradingStrategy | null;
+  brokerRecommendations: BrokerRecommendation[];
+}
+
+export async function getStockAnalysisData(symbol: string): Promise<StockAnalysisData> {
+  const [aiAnalysis, riskAnalysis, tradingStrategy, brokerRecommendations] = await Promise.all([
+    getAIAnalysis(symbol),
+    getRiskAnalysis(symbol),
+    getTradingStrategy(symbol),
+    getBrokerRecommendations(symbol)
+  ]);
+
+  return {
+    aiAnalysis,
+    riskAnalysis,
+    tradingStrategy,
+    brokerRecommendations
+  };
+}
+
 export default {
   getCompanies,
   getVN100Companies,
@@ -228,5 +496,20 @@ export default {
   getFinancialRatios,
   getLatestFinancialRatio,
   getTopMovers,
-  getDashboardSummary
+  getDashboardSummary,
+  getStockNews,
+  getMarketNews,
+  getAllNews,
+  getAIAnalysis,
+  getRiskAnalysis,
+  getTradingStrategy,
+  getBrokerRecommendations,
+  getStockAnalysisData,
+  getTechnicalIndicators,
+  getAllTechnicalIndicators,
+  getTopRSStocks,
+  getStocksAboveMA,
+  getOversoldStocks,
+  getOverboughtStocks,
+  getGoldenCrossStocks
 };

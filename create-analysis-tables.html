@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tạo Bảng Phân Tích AI - Supabase</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-3xl font-bold mb-2">🧠 Tạo Bảng Phân Tích AI</h1>
+    <p class="text-slate-400 mb-8">Tạo các bảng: ai_analysis, risk_analysis, trading_strategy, broker_recommendations</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <!-- Bảng 1: AI Analysis -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <h3 class="text-lg font-bold text-indigo-400 mb-3">📊 ai_analysis</h3>
+        <p class="text-sm text-slate-400 mb-3">Chẩn đoán SenAI (Rating, Score, Signal)</p>
+        <ul class="text-xs text-slate-500 space-y-1">
+          <li>• rating (0-100)</li>
+          <li>• score (0-100)</li>
+          <li>• signal (0-100)</li>
+          <li>• recommendation (MUA/BÁN/NẮM GIỮ)</li>
+        </ul>
+      </div>
+
+      <!-- Bảng 2: Risk Analysis -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <h3 class="text-lg font-bold text-emerald-400 mb-3">⚠️ risk_analysis</h3>
+        <p class="text-sm text-slate-400 mb-3">Xác suất & Rủi ro</p>
+        <ul class="text-xs text-slate-500 space-y-1">
+          <li>• optimal_holding_days</li>
+          <li>• upside_probability (%)</li>
+          <li>• downside_risk (%)</li>
+          <li>• volatility, beta, sharpe_ratio</li>
+        </ul>
+      </div>
+
+      <!-- Bảng 3: Trading Strategy -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <h3 class="text-lg font-bold text-amber-400 mb-3">🎯 trading_strategy</h3>
+        <p class="text-sm text-slate-400 mb-3">Chiến lược giao dịch</p>
+        <ul class="text-xs text-slate-500 space-y-1">
+          <li>• buy_zone_low, buy_zone_high</li>
+          <li>• stop_loss</li>
+          <li>• target_1, target_2, target_3</li>
+          <li>• support, resistance</li>
+        </ul>
+      </div>
+
+      <!-- Bảng 4: Broker Recommendations -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <h3 class="text-lg font-bold text-rose-400 mb-3">🏦 broker_recommendations</h3>
+        <p class="text-sm text-slate-400 mb-3">Đồng thuận từ CTCK</p>
+        <ul class="text-xs text-slate-500 space-y-1">
+          <li>• broker_code (HSC, SSI, VCSC...)</li>
+          <li>• action (MUA/BÁN/NẮM GIỮ)</li>
+          <li>• target_price</li>
+          <li>• rationale</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Buttons -->
+    <div class="flex gap-4 mb-8">
+      <button onclick="createTables()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-bold transition-colors">
+        🚀 Tạo Tất Cả Bảng
+      </button>
+      <button onclick="insertSampleData()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-bold transition-colors">
+        📝 Thêm Dữ Liệu Mẫu
+      </button>
+      <button onclick="checkTables()" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-bold transition-colors">
+        🔍 Kiểm Tra Bảng
+      </button>
+    </div>
+
+    <!-- Log -->
+    <div class="bg-slate-800 rounded-xl p-6 border border-slate-700">
+      <h3 class="text-lg font-bold mb-4">📋 Log</h3>
+      <div id="log" class="font-mono text-sm space-y-2 max-h-96 overflow-y-auto"></div>
+    </div>
+
+    <!-- SQL Preview -->
+    <div class="mt-8 bg-slate-800 rounded-xl p-6 border border-slate-700">
+      <h3 class="text-lg font-bold mb-4">📄 SQL (Copy vào Supabase Dashboard nếu cần)</h3>
+      <pre id="sqlPreview" class="text-xs text-slate-400 overflow-x-auto max-h-96 overflow-y-auto bg-slate-900 p-4 rounded-lg"></pre>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+    // Dùng anon key - cần thêm policy INSERT trên Supabase
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    };
+
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const colors = {
+        info: 'text-slate-300',
+        success: 'text-emerald-400',
+        error: 'text-rose-400',
+        warning: 'text-amber-400'
+      };
+      logDiv.innerHTML += `<div class="${colors[type]}">${new Date().toLocaleTimeString()} - ${message}</div>`;
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // SQL tạo bảng
+    const createTablesSql = `
+-- 1. BẢNG AI_ANALYSIS
+CREATE TABLE IF NOT EXISTS ai_analysis (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(10) NOT NULL,
+  analysis_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  rating INTEGER CHECK (rating >= 0 AND rating <= 100),
+  score INTEGER CHECK (score >= 0 AND score <= 100),
+  signal INTEGER CHECK (signal >= 0 AND signal <= 100),
+  recommendation VARCHAR(20) CHECK (recommendation IN ('MUA', 'BÁN', 'NẮM GIỮ', 'THEO DÕI')),
+  confidence DECIMAL(5,2),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(symbol, analysis_date)
+);
+
+-- 2. BẢNG RISK_ANALYSIS
+CREATE TABLE IF NOT EXISTS risk_analysis (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(10) NOT NULL,
+  analysis_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  optimal_holding_days INTEGER,
+  upside_probability DECIMAL(5,2),
+  downside_risk DECIMAL(5,2),
+  volatility DECIMAL(5,2),
+  beta DECIMAL(5,2),
+  sharpe_ratio DECIMAL(5,2),
+  max_drawdown DECIMAL(5,2),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(symbol, analysis_date)
+);
+
+-- 3. BẢNG TRADING_STRATEGY
+CREATE TABLE IF NOT EXISTS trading_strategy (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(10) NOT NULL,
+  analysis_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  buy_zone_low DECIMAL(12,2),
+  buy_zone_high DECIMAL(12,2),
+  stop_loss DECIMAL(12,2),
+  target_1 DECIMAL(12,2),
+  target_2 DECIMAL(12,2),
+  target_3 DECIMAL(12,2),
+  support_1 DECIMAL(12,2),
+  support_2 DECIMAL(12,2),
+  resistance_1 DECIMAL(12,2),
+  resistance_2 DECIMAL(12,2),
+  strategy_type VARCHAR(50),
+  strategy_note TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(symbol, analysis_date)
+);
+
+-- 4. BẢNG BROKER_RECOMMENDATIONS
+CREATE TABLE IF NOT EXISTS broker_recommendations (
+  id SERIAL PRIMARY KEY,
+  symbol VARCHAR(10) NOT NULL,
+  recommendation_date DATE NOT NULL,
+  broker_code VARCHAR(20) NOT NULL,
+  broker_name VARCHAR(100),
+  action VARCHAR(20) CHECK (action IN ('MUA', 'BÁN', 'NẮM GIỮ', 'KHẢ QUAN', 'TRUNG LẬP', 'TIÊU CỰC')),
+  target_price DECIMAL(12,2),
+  previous_target DECIMAL(12,2),
+  rationale TEXT,
+  report_url VARCHAR(500),
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(symbol, recommendation_date, broker_code)
+);
+
+-- INDEX
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_symbol ON ai_analysis(symbol);
+CREATE INDEX IF NOT EXISTS idx_risk_analysis_symbol ON risk_analysis(symbol);
+CREATE INDEX IF NOT EXISTS idx_trading_strategy_symbol ON trading_strategy(symbol);
+CREATE INDEX IF NOT EXISTS idx_broker_recommendations_symbol ON broker_recommendations(symbol);
+
+-- RLS
+ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE risk_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trading_strategy ENABLE ROW LEVEL SECURITY;
+ALTER TABLE broker_recommendations ENABLE ROW LEVEL SECURITY;
+
+-- Policy
+DROP POLICY IF EXISTS "Allow public read ai_analysis" ON ai_analysis;
+DROP POLICY IF EXISTS "Allow public read risk_analysis" ON risk_analysis;
+DROP POLICY IF EXISTS "Allow public read trading_strategy" ON trading_strategy;
+DROP POLICY IF EXISTS "Allow public read broker_recommendations" ON broker_recommendations;
+
+CREATE POLICY "Allow public read ai_analysis" ON ai_analysis FOR SELECT USING (true);
+CREATE POLICY "Allow public read risk_analysis" ON risk_analysis FOR SELECT USING (true);
+CREATE POLICY "Allow public read trading_strategy" ON trading_strategy FOR SELECT USING (true);
+CREATE POLICY "Allow public read broker_recommendations" ON broker_recommendations FOR SELECT USING (true);
+`;
+
+    document.getElementById('sqlPreview').textContent = createTablesSql;
+
+    async function createTables() {
+      log('🚀 Bắt đầu tạo bảng...', 'info');
+      log('⚠️ Supabase REST API không hỗ trợ CREATE TABLE trực tiếp.', 'warning');
+      log('👉 Vui lòng copy SQL ở dưới và chạy trong Supabase Dashboard > SQL Editor', 'warning');
+      log('📋 SQL đã được hiển thị bên dưới', 'success');
+    }
+
+    async function insertSampleData() {
+      log('📝 Đang thêm dữ liệu mẫu...', 'info');
+
+      const today = new Date().toISOString().split('T')[0];
+
+      // Sample data cho các mã VN100
+      const symbols = ['VNM', 'HPG', 'FPT', 'VIC', 'VHM', 'MSN', 'TCB', 'VPB', 'MBB', 'ACB'];
+
+      // 1. AI Analysis
+      for (const symbol of symbols) {
+        const aiData = {
+          symbol,
+          analysis_date: today,
+          rating: Math.floor(Math.random() * 30) + 60,
+          score: Math.floor(Math.random() * 20) + 75,
+          signal: Math.floor(Math.random() * 40) + 40,
+          recommendation: ['MUA', 'NẮM GIỮ', 'THEO DÕI'][Math.floor(Math.random() * 3)],
+          confidence: (Math.random() * 20 + 70).toFixed(2)
+        };
+
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/ai_analysis`, {
+            method: 'POST',
+            headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify(aiData)
+          });
+          if (res.ok) {
+            log(`✅ ai_analysis: ${symbol}`, 'success');
+          } else {
+            const err = await res.text();
+            log(`❌ ai_analysis ${symbol}: ${err}`, 'error');
+          }
+        } catch (e) {
+          log(`❌ ai_analysis ${symbol}: ${e.message}`, 'error');
+        }
+      }
+
+      // 2. Risk Analysis
+      for (const symbol of symbols) {
+        const riskData = {
+          symbol,
+          analysis_date: today,
+          optimal_holding_days: Math.floor(Math.random() * 60) + 30,
+          upside_probability: (Math.random() * 30 + 50).toFixed(2),
+          downside_risk: (Math.random() * 20 + 20).toFixed(2),
+          volatility: (Math.random() * 15 + 10).toFixed(2),
+          beta: (Math.random() * 0.5 + 0.8).toFixed(2),
+          sharpe_ratio: (Math.random() * 1 + 0.5).toFixed(2),
+          max_drawdown: (Math.random() * 15 + 5).toFixed(2)
+        };
+
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/risk_analysis`, {
+            method: 'POST',
+            headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify(riskData)
+          });
+          if (res.ok) {
+            log(`✅ risk_analysis: ${symbol}`, 'success');
+          } else {
+            const err = await res.text();
+            log(`❌ risk_analysis ${symbol}: ${err}`, 'error');
+          }
+        } catch (e) {
+          log(`❌ risk_analysis ${symbol}: ${e.message}`, 'error');
+        }
+      }
+
+      // 3. Trading Strategy
+      const priceRanges = {
+        'VNM': { base: 64000, range: 8000 },
+        'HPG': { base: 26000, range: 4000 },
+        'FPT': { base: 130000, range: 15000 },
+        'VIC': { base: 42000, range: 5000 },
+        'VHM': { base: 38000, range: 5000 },
+        'MSN': { base: 75000, range: 10000 },
+        'TCB': { base: 24000, range: 3000 },
+        'VPB': { base: 19000, range: 2500 },
+        'MBB': { base: 22000, range: 3000 },
+        'ACB': { base: 24000, range: 3000 }
+      };
+
+      for (const symbol of symbols) {
+        const p = priceRanges[symbol] || { base: 50000, range: 5000 };
+        const strategyData = {
+          symbol,
+          analysis_date: today,
+          buy_zone_low: p.base - p.range * 0.1,
+          buy_zone_high: p.base + p.range * 0.05,
+          stop_loss: p.base - p.range * 0.2,
+          target_1: p.base + p.range * 0.15,
+          target_2: p.base + p.range * 0.25,
+          target_3: p.base + p.range * 0.4,
+          support_1: p.base - p.range * 0.1,
+          support_2: p.base - p.range * 0.2,
+          resistance_1: p.base + p.range * 0.1,
+          resistance_2: p.base + p.range * 0.2,
+          strategy_type: 'Swing Trading',
+          strategy_note: `Theo dõi vùng hỗ trợ ${(p.base - p.range * 0.1).toLocaleString()} - ${(p.base - p.range * 0.2).toLocaleString()}`
+        };
+
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy`, {
+            method: 'POST',
+            headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
+            body: JSON.stringify(strategyData)
+          });
+          if (res.ok) {
+            log(`✅ trading_strategy: ${symbol}`, 'success');
+          } else {
+            const err = await res.text();
+            log(`❌ trading_strategy ${symbol}: ${err}`, 'error');
+          }
+        } catch (e) {
+          log(`❌ trading_strategy ${symbol}: ${e.message}`, 'error');
+        }
+      }
+
+      // 4. Broker Recommendations
+      const brokers = [
+        { code: 'HSC', name: 'Công ty CP Chứng khoán TP.HCM' },
+        { code: 'SSI', name: 'Công ty CP Chứng khoán SSI' },
+        { code: 'VCSC', name: 'Công ty CP Chứng khoán Bản Việt' },
+        { code: 'FSC', name: 'Công ty CP Chứng khoán FPT' },
+        { code: 'VND', name: 'Công ty CP Chứng khoán VNDirect' }
+      ];
+
+      for (const symbol of symbols.slice(0, 5)) {
+        for (const broker of brokers.slice(0, 3)) {
+          const p = priceRanges[symbol] || { base: 50000, range: 5000 };
+          const brokerData = {
+            symbol,
+            recommendation_date: today,
+            broker_code: broker.code,
+            broker_name: broker.name,
+            action: ['MUA', 'NẮM GIỮ', 'KHẢ QUAN'][Math.floor(Math.random() * 3)],
+            target_price: p.base + p.range * (Math.random() * 0.3),
+            rationale: `Triển vọng tăng trưởng tích cực trong Q${Math.ceil(Math.random() * 4)}/2025`
+          };
+
+          try {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/broker_recommendations`, {
+              method: 'POST',
+              headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
+              body: JSON.stringify(brokerData)
+            });
+            if (res.ok) {
+              log(`✅ broker_recommendations: ${symbol} - ${broker.code}`, 'success');
+            } else {
+              const err = await res.text();
+              log(`❌ broker_recommendations ${symbol}: ${err}`, 'error');
+            }
+          } catch (e) {
+            log(`❌ broker_recommendations ${symbol}: ${e.message}`, 'error');
+          }
+        }
+      }
+
+      log('🎉 Hoàn thành thêm dữ liệu mẫu!', 'success');
+    }
+
+    async function checkTables() {
+      log('🔍 Kiểm tra các bảng...', 'info');
+
+      const tables = ['ai_analysis', 'risk_analysis', 'trading_strategy', 'broker_recommendations'];
+
+      for (const table of tables) {
+        try {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?limit=1`, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            log(`✅ ${table}: Tồn tại (${data.length > 0 ? 'có dữ liệu' : 'trống'})`, 'success');
+          } else {
+            log(`❌ ${table}: Chưa tồn tại hoặc lỗi`, 'error');
+          }
+        } catch (e) {
+          log(`❌ ${table}: ${e.message}`, 'error');
+        }
+      }
+    }
+
+    // Auto check on load
+    checkTables();
+  </script>
+</body>
+</html>

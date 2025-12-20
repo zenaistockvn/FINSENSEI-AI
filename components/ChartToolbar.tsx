@@ -25,7 +25,7 @@ const ChartToolbar: React.FC<ChartToolbarProps> = ({
   onFullscreen,
   onExport
 }) => {
-  const timeframes = ['1D', '1W', '1M', '3M', '6M', '1Y', '2Y', 'ALL'];
+  const timeframes = ['3M', '6M', '1Y', '2Y', 'ALL'];
   
   return (
     <div className={`flex items-center justify-between px-4 py-2 border-b ${

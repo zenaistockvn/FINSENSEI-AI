@@ -52,7 +52,7 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
           return {
             ticker: company.symbol,
             company: company.company_name,
-            price: priceData ? priceData.close_price * 1000 : 0,
+            price: priceData ? priceData.close_price : 0,
             change: Math.round(change * 100) / 100,
             score: Math.floor(80 + Math.random() * 15),
             reason: `${company.industry || 'Ngành'} có tiềm năng tăng trưởng. Khối lượng giao dịch ${priceData?.volume ? (priceData.volume > 500000 ? 'cao' : 'ổn định') : 'đang cập nhật'}.`,

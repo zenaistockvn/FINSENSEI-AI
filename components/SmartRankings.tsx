@@ -21,7 +21,7 @@ const SmartRankings: React.FC = () => {
           .slice(0, 5)
           .map((stock: StockPrice, index: number) => ({
             ticker: stock.symbol,
-            price: stock.close_price * 1000, // Convert to VND
+            price: stock.close_price, // Price already in VND
             volPercent: Math.round((stock.volume / 1000000) * 10) / 10, // Volume in millions
             rsScore: 95 - index * 2 // Simulated RS score based on volume rank
           }));

@@ -61,8 +61,7 @@ const MarketPulse: React.FC = () => {
   return (
     <div className="mb-6">
       <h2 className="text-slate-500 dark:text-slate-300 text-sm font-semibold mb-3 tracking-wide">
-        Nhịp đập thị trường 
-        <span className="ml-2 text-xs text-emerald-500">● Live từ Supabase</span>
+        Nhịp đập thị trường
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {indices.map((idx) => {

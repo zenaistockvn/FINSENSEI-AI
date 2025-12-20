@@ -71,8 +71,8 @@ const App: React.FC = () => {
           setCurrentStock({
             ticker: topStock.symbol,
             name: company?.company_name || topStock.symbol,
-            price: topStock.close_price * 1000,
-            change: Math.round(priceChange * 1000),
+            price: topStock.close_price,
+            change: Math.round(priceChange),
             changePercent: Math.round(changePercent * 100) / 100,
             currency: 'VND',
             rsRating: Math.min(95, Math.floor(topStock.volume / 100000)),
@@ -127,6 +127,22 @@ const App: React.FC = () => {
   ];
 
   const toggleTheme = () => setIsDark(!isDark);
+
+  // Listen for navigation events from other components (e.g., AIScreener)
+  useEffect(() => {
+    const handleNavigateToAnalysis = (e: CustomEvent) => {
+      setActiveTab('analysis');
+      // Small delay to ensure tab switch happens first
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('selectStock', { detail: e.detail }));
+      }, 100);
+    };
+
+    window.addEventListener('navigateToAnalysis', handleNavigateToAnalysis as EventListener);
+    return () => {
+      window.removeEventListener('navigateToAnalysis', handleNavigateToAnalysis as EventListener);
+    };
+  }, []);
 
   const renderContent = () => {
     if (!user) return null;

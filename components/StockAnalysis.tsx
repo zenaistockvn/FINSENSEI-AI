@@ -1,16 +1,62 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  ComposedChart, Line, Cell, PieChart, Pie, ReferenceLine, Bar
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ComposedChart,
+  Line,
+  Cell,
+  PieChart,
+  Pie,
+  ReferenceLine,
+  Bar,
 } from 'recharts';
-import { 
-  TrendingUp, Layers, CheckCircle2, ShieldAlert, Target, 
-  Clock, ArrowRight, BrainCircuit, BarChart2, Activity, Zap, X, ChevronDown, FileText, 
-  FileSearch, Mic2, ThumbsUp, ThumbsDown, Smile, Newspaper, Globe, Share2, Search
+import {
+  TrendingUp,
+  Layers,
+  CheckCircle2,
+  ShieldAlert,
+  Target,
+  Clock,
+  ArrowRight,
+  BrainCircuit,
+  BarChart2,
+  Activity,
+  Zap,
+  X,
+  ChevronDown,
+  FileText,
+  FileSearch,
+  Mic2,
+  ThumbsUp,
+  ThumbsDown,
+  Smile,
+  Newspaper,
+  Globe,
+  Share2,
+  Search,
 } from 'lucide-react';
-import { 
-  getVN100Companies, getStockPrices, getCompanyBySymbol, searchCompanies,
-  getLatestFinancialRatio, Company, StockPrice, FinancialRatio
+import {
+  getVN100Companies,
+  getStockPrices,
+  getCompanyBySymbol,
+  searchCompanies,
+  getLatestFinancialRatio,
+  getStockNews,
+  getAIAnalysis,
+  getRiskAnalysis,
+  getTradingStrategy,
+  getBrokerRecommendations,
+  Company,
+  StockPrice,
+  FinancialRatio,
+  StockNews,
+  AIAnalysis,
+  RiskAnalysis,
+  TradingStrategy,
+  BrokerRecommendation,
 } from '../services/supabaseClient';
 import TradingViewChart from './TradingViewChart';
 
@@ -227,151 +273,422 @@ const CandlestickChart = ({ data, isDark }: { data: CandlestickData[]; isDark: b
   );
 };
 
-// --- Shared News Data ---
-const SHARED_NEWS_DATA = [
-  {
-    id: 1, source: "Cafef", time: "2 giờ trước",
-    title: "Cổ phiếu tăng mạnh nhờ kết quả kinh doanh vượt kỳ vọng",
-    summary: "Doanh thu và lợi nhuận quý gần nhất đều vượt dự báo của giới phân tích.",
-    sentiment: "positive",
-    aiSummary: "Kết quả kinh doanh tích cực, tác động tốt đến tâm lý nhà đầu tư."
-  },
-  {
-    id: 2, source: "VnEconomy", time: "5 giờ trước",
-    title: "Mở rộng hoạt động kinh doanh tại thị trường mới",
-    summary: "Công ty đang đẩy mạnh mở rộng quy mô hoạt động tại các thị trường tiềm năng.",
-    sentiment: "positive",
-    aiSummary: "Chiến lược mở rộng giúp đa dạng hóa nguồn thu, giảm rủi ro tập trung."
-  },
-  {
-    id: 3, source: "Vietstock", time: "1 ngày trước",
-    title: "Khối ngoại tiếp tục mua ròng",
-    summary: "Dòng tiền từ các quỹ ETF ngoại giúp nâng đỡ thị giá cổ phiếu.",
-    sentiment: "neutral",
-    aiSummary: "Dòng tiền ngoại ổn định là yếu tố hỗ trợ giá quan trọng."
-  },
-  {
-    id: 4, source: "DanTri", time: "2 ngày trước",
-    title: "Áp lực từ biến động vĩ mô",
-    summary: "Biến động tỷ giá và lãi suất có thể ảnh hưởng đến biên lợi nhuận ngắn hạn.",
-    sentiment: "negative",
-    aiSummary: "Rủi ro vĩ mô ngắn hạn cần theo dõi, nhưng nền tảng cơ bản vẫn vững."
-  }
-];
+// --- News Data Interface ---
+interface NewsItem {
+  id: number;
+  source: string;
+  time: string;
+  title: string;
+  summary: string;
+  sentiment: string;
+  aiSummary: string;
+  url?: string;
+}
+
+// Helper function to format time ago
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffHours < 1) return 'Vừa xong';
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  if (diffDays === 1) return '1 ngày trước';
+  return `${diffDays} ngày trước`;
+}
 
 // --- Sub-Components ---
 const AIEarningsInsight = ({ isDark, stockInfo }: { isDark: boolean; stockInfo: StockInfo | null }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'positive' | 'negative'>('overview');
+  
+  const positivePoints = [
+    { title: "Tăng trưởng Doanh thu", desc: "Doanh thu tăng trưởng ổn định, vượt dự báo của giới phân tích.", score: 85 },
+    { title: "Biên lợi nhuận cải thiện", desc: "Biên lãi gộp cải thiện nhờ tối ưu hóa chi phí và nâng cao hiệu quả.", score: 78 },
+    { title: "Dòng tiền mạnh", desc: "Dòng tiền từ hoạt động kinh doanh dương, đảm bảo khả năng chi trả.", score: 82 }
+  ];
+  
+  const negativePoints = [
+    { title: "Rủi ro Tỷ giá", desc: "Biến động tỷ giá có thể ảnh hưởng đến lợi nhuận tài chính ngắn hạn.", risk: 'medium' },
+    { title: "Chi phí tăng", desc: "Chi phí đầu tư và vận hành tăng, gây áp lực lên biên lợi nhuận ròng.", risk: 'low' }
+  ];
+
   return (
     <div className="h-full flex flex-col animate-fade-in-up">
-      <div className="flex items-center justify-between mb-6 p-4 bg-white dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-white/5">
-        <div className="flex items-center gap-4">
-          <div className="bg-indigo-500/10 dark:bg-indigo-500/20 p-3 rounded-lg text-indigo-500 dark:text-indigo-400">
-            <FileSearch size={24} />
+      {/* Header Card */}
+      <div className="flex items-center justify-between mb-4 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-slate-800/60 dark:to-slate-800/40 rounded-xl border border-indigo-100 dark:border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+            <BrainCircuit size={24} className="text-white" />
           </div>
           <div>
-            <h3 className="text-slate-900 dark:text-white font-bold text-lg">
-              Phân tích Báo cáo {stockInfo?.symbol || 'N/A'}
+            <h3 className="text-slate-900 dark:text-white font-bold text-base flex items-center gap-2">
+              Phân tích AI
+              <span className="text-xs font-medium px-2 py-0.5 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-full">
+                {stockInfo?.symbol || 'N/A'}
+              </span>
             </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-xs">Nguồn: BCTC Hợp nhất & Biên bản họp ĐHCD</p>
+            <p className="text-slate-500 dark:text-slate-400 text-xs">BCTC Hợp nhất • Biên bản ĐHCD</p>
           </div>
         </div>
-        <div className="text-right hidden md:block">
-          <div className="text-xs text-slate-500 uppercase font-bold mb-1">Tông giọng Ban lãnh đạo</div>
-          <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-            <Smile size={16} className="text-emerald-500 dark:text-emerald-400" />
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">Tự tin (88%)</span>
+        <div className="hidden md:flex flex-col items-end gap-1">
+          <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Điểm tổng hợp</div>
+          <div className="flex items-center gap-2">
+            <div className="w-20 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full" style={{ width: '75%' }}></div>
+            </div>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold text-sm">75/100</span>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2">
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ThumbsUp size={18} className="text-emerald-500 dark:text-emerald-400" />
-            <h4 className="text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider text-sm">Điểm Tích cực</h4>
-          </div>
-          {[
-            { title: "Tăng trưởng Doanh thu", desc: "Doanh thu tăng trưởng ổn định, vượt dự báo của giới phân tích." },
-            { title: "Biên lợi nhuận cải thiện", desc: "Biên lãi gộp cải thiện nhờ tối ưu hóa chi phí và nâng cao hiệu quả." },
-            { title: "Dòng tiền mạnh", desc: "Dòng tiền từ hoạt động kinh doanh dương, đảm bảo khả năng chi trả." }
-          ].map((item, i) => (
-            <div key={i} className="bg-emerald-50/50 dark:bg-slate-800/40 p-4 rounded-xl border-l-2 border-emerald-500">
-              <p className="text-slate-800 dark:text-white font-bold text-sm mb-1">{item.title}</p>
-              <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <ThumbsDown size={18} className="text-rose-500 dark:text-rose-400" />
-            <h4 className="text-rose-600 dark:text-rose-400 font-bold uppercase tracking-wider text-sm">Điểm Tiêu cực</h4>
-          </div>
-          {[
-            { title: "Rủi ro Tỷ giá", desc: "Biến động tỷ giá có thể ảnh hưởng đến lợi nhuận tài chính ngắn hạn." },
-            { title: "Chi phí tăng", desc: "Chi phí đầu tư và vận hành tăng, gây áp lực lên biên lợi nhuận ròng." }
-          ].map((item, i) => (
-            <div key={i} className="bg-rose-50/50 dark:bg-slate-800/40 p-4 rounded-xl border-l-2 border-rose-500">
-              <p className="text-slate-800 dark:text-white font-bold text-sm mb-1">{item.title}</p>
-              <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
-        </div>
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-1 mb-4 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+        {[
+          { id: 'overview', label: 'Tổng quan', icon: FileSearch },
+          { id: 'positive', label: 'Tích cực', icon: ThumbsUp, count: positivePoints.length },
+          { id: 'negative', label: 'Rủi ro', icon: ThumbsDown, count: negativePoints.length }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${
+              activeTab === tab.id
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            <tab.icon size={14} />
+            <span>{tab.label}</span>
+            {tab.count && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                activeTab === tab.id 
+                  ? tab.id === 'positive' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' : 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400'
+                  : 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
-      
-      <div className="mt-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-xl border border-indigo-200 dark:border-indigo-500/20">
-        <div className="flex gap-4">
-          <BrainCircuit size={20} className="text-indigo-500 dark:text-indigo-400 mt-1" />
-          <div>
-            <h5 className="text-indigo-700 dark:text-indigo-300 font-bold text-sm mb-1">Nhận định AI</h5>
-            <p className="text-slate-600 dark:text-slate-300 text-xs leading-relaxed">
-              Dựa trên phân tích, cổ phiếu có nền tảng cơ bản vững chắc. Khuyến nghị theo dõi diễn biến vĩ mô.
-            </p>
+
+      {/* Content Area */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+        {activeTab === 'overview' && (
+          <div className="space-y-4">
+            {/* Quick Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-xl p-3 border border-emerald-100 dark:border-emerald-500/20 text-center">
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{positivePoints.length}</div>
+                <div className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 uppercase font-medium">Điểm mạnh</div>
+              </div>
+              <div className="bg-rose-50 dark:bg-rose-500/10 rounded-xl p-3 border border-rose-100 dark:border-rose-500/20 text-center">
+                <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">{negativePoints.length}</div>
+                <div className="text-[10px] text-rose-600/70 dark:text-rose-400/70 uppercase font-medium">Rủi ro</div>
+              </div>
+              <div className="bg-indigo-50 dark:bg-indigo-500/10 rounded-xl p-3 border border-indigo-100 dark:border-indigo-500/20 text-center">
+                <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">88%</div>
+                <div className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 uppercase font-medium">Độ tin cậy</div>
+              </div>
+            </div>
+
+            {/* AI Summary */}
+            <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/40 dark:to-slate-800/20 rounded-xl border border-slate-200 dark:border-white/5">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                  <Smile size={16} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">Nhận định tổng quan</span>
+                    <span className="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-full font-medium">Tích cực</span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    Dựa trên phân tích BCTC và biên bản họp ĐHCD, cổ phiếu {stockInfo?.symbol} có nền tảng cơ bản vững chắc với doanh thu tăng trưởng ổn định. Ban lãnh đạo thể hiện sự tự tin về triển vọng kinh doanh. Khuyến nghị theo dõi diễn biến vĩ mô và các yếu tố rủi ro tỷ giá.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Top Highlights */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <ThumbsUp size={14} className="text-emerald-500" />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Điểm nổi bật</span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">{positivePoints[0].title}: {positivePoints[0].desc}</p>
+              </div>
+              <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldAlert size={14} className="text-amber-500" />
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Cần lưu ý</span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">{negativePoints[0].title}: {negativePoints[0].desc}</p>
+              </div>
+            </div>
           </div>
+        )}
+
+        {activeTab === 'positive' && (
+          <div className="space-y-3">
+            {positivePoints.map((item, i) => (
+              <div key={i} className="bg-white dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5 hover:border-emerald-300 dark:hover:border-emerald-500/30 transition-colors group">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                      <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-1">{item.title}</h4>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{item.desc}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{item.score}</span>
+                    <span className="text-[10px] text-slate-400">điểm</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'negative' && (
+          <div className="space-y-3">
+            {negativePoints.map((item, i) => (
+              <div key={i} className="bg-white dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5 hover:border-rose-300 dark:hover:border-rose-500/30 transition-colors group">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-500/20 flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                    <ShieldAlert size={16} className="text-rose-600 dark:text-rose-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        item.risk === 'high' ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400' :
+                        item.risk === 'medium' ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400' :
+                        'bg-slate-100 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
+                      }`}>
+                        {item.risk === 'high' ? 'Cao' : item.risk === 'medium' ? 'Trung bình' : 'Thấp'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Action */}
+      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <Clock size={12} />
+            <span>Cập nhật: Hôm nay, 09:30</span>
+          </div>
+          <button className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
+            <FileText size={12} />
+            Xem báo cáo đầy đủ
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-const StockNewsFeed = ({ data, stockSymbol }: { data: any[]; stockSymbol: string }) => {
+const StockNewsFeed = ({ data, stockSymbol }: { data: NewsItem[]; stockSymbol: string }) => {
+  const [filter, setFilter] = useState<'all' | 'positive' | 'neutral' | 'negative'>('all');
+  
+  const filteredData = data.filter(item => filter === 'all' || item.sentiment === filter);
+  
+  const sentimentCounts = {
+    all: data.length,
+    positive: data.filter(n => n.sentiment === 'positive').length,
+    neutral: data.filter(n => n.sentiment === 'neutral').length,
+    negative: data.filter(n => n.sentiment === 'negative').length
+  };
+
   return (
     <div className="h-full flex flex-col animate-fade-in-up">
-      <div className="flex items-center justify-between mb-4 px-1">
-        <h3 className="text-slate-900 dark:text-white font-bold text-lg flex items-center gap-2">
-          <Globe size={18} className="text-indigo-500 dark:text-indigo-400" />
-          Tin tức: {stockSymbol}
-        </h3>
-      </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
-        {data.map((item) => (
-          <div key={item.id} className="bg-white dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-white/5 hover:border-indigo-400 dark:hover:border-indigo-500/30 transition-colors group">
-            <div className="flex justify-between items-start mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-300 px-2 py-0.5 rounded font-bold uppercase">{item.source}</span>
-                <span className="text-[10px] text-slate-400">{item.time}</span>
-              </div>
-              <button className="text-slate-400 hover:text-indigo-500"><Share2 size={14} /></button>
-            </div>
-            <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3 group-hover:text-indigo-600 dark:group-hover:text-indigo-300">{item.title}</h4>
-            <div className={`p-3 rounded-lg border ${
-              item.sentiment === 'positive' ? 'bg-emerald-50 dark:bg-emerald-500/5 border-emerald-200 dark:border-emerald-500/10' :
-              item.sentiment === 'negative' ? 'bg-rose-50 dark:bg-rose-500/5 border-rose-200 dark:border-rose-500/10' :
-              'bg-slate-100 dark:bg-slate-700/20 border-slate-200 dark:border-slate-600/10'
-            }`}>
-              <div className="flex items-start gap-2">
-                <BrainCircuit size={14} className={
-                  item.sentiment === 'positive' ? 'text-emerald-500' :
-                  item.sentiment === 'negative' ? 'text-rose-500' : 'text-slate-400'
-                } />
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  <span className="font-bold opacity-70">AI: </span>{item.aiSummary}
-                </p>
-              </div>
-            </div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4 p-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800/60 dark:to-slate-800/40 rounded-xl border border-slate-200 dark:border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+            <Newspaper size={20} className="text-white" />
           </div>
+          <div>
+            <h3 className="text-slate-900 dark:text-white font-bold text-base flex items-center gap-2">
+              Tin tức
+              <span className="text-xs font-medium px-2 py-0.5 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-full">
+                {stockSymbol}
+              </span>
+            </h3>
+            <p className="text-slate-500 dark:text-slate-400 text-xs">{data.length} tin tức gần đây</p>
+          </div>
+        </div>
+        
+        {/* Sentiment Summary */}
+        <div className="hidden md:flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.positive}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.neutral}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.negative}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex items-center gap-1 mb-4 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
+        {[
+          { id: 'all', label: 'Tất cả', count: sentimentCounts.all },
+          { id: 'positive', label: 'Tích cực', count: sentimentCounts.positive, color: 'emerald' },
+          { id: 'neutral', label: 'Trung lập', count: sentimentCounts.neutral, color: 'slate' },
+          { id: 'negative', label: 'Tiêu cực', count: sentimentCounts.negative, color: 'rose' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setFilter(tab.id as any)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-xs font-medium transition-all ${
+              filter === tab.id
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            <span>{tab.label}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              filter === tab.id 
+                ? tab.color === 'emerald' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' 
+                : tab.color === 'rose' ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400'
+                : 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
+                : 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
+            }`}>
+              {tab.count}
+            </span>
+          </button>
         ))}
       </div>
+
+      {/* News List */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-3">
+        {filteredData.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+              <Newspaper size={28} className="text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Chưa có tin tức</p>
+            <p className="text-xs text-slate-500">Không tìm thấy tin tức cho mã {stockSymbol}</p>
+          </div>
+        ) : (
+          filteredData.map((item, index) => (
+            <div 
+              key={item.id} 
+              className="bg-white dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-white/5 hover:border-blue-300 dark:hover:border-blue-500/30 transition-all group overflow-hidden"
+            >
+              {/* News Header */}
+              <div className="p-4 pb-3">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide ${
+                      item.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
+                      item.sentiment === 'negative' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
+                      'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
+                    }`}>
+                      {item.sentiment === 'positive' ? '↑ Tích cực' : item.sentiment === 'negative' ? '↓ Tiêu cực' : '• Trung lập'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.source}</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">•</span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.time}</span>
+                  </div>
+                  {item.url && (
+                    <a 
+                      href={item.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
+                      title="Xem bài gốc"
+                    >
+                      <Share2 size={14} />
+                    </a>
+                  )}
+                </div>
+                
+                {/* Title */}
+                {item.url ? (
+                  <a 
+                    href={item.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                      {item.title}
+                    </h4>
+                  </a>
+                ) : (
+                  <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-snug line-clamp-2">
+                    {item.title}
+                  </h4>
+                )}
+              </div>
+              
+              {/* AI Summary */}
+              <div className={`mx-4 mb-4 p-3 rounded-lg border ${
+                item.sentiment === 'positive' ? 'bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10' :
+                item.sentiment === 'negative' ? 'bg-rose-50/50 dark:bg-rose-500/5 border-rose-100 dark:border-rose-500/10' :
+                'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700/50'
+              }`}>
+                <div className="flex items-start gap-2">
+                  <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                    item.sentiment === 'positive' ? 'bg-emerald-100 dark:bg-emerald-500/20' :
+                    item.sentiment === 'negative' ? 'bg-rose-100 dark:bg-rose-500/20' :
+                    'bg-slate-200 dark:bg-slate-700'
+                  }`}>
+                    <BrainCircuit size={12} className={`${
+                      item.sentiment === 'positive' ? 'text-emerald-600 dark:text-emerald-400' :
+                      item.sentiment === 'negative' ? 'text-rose-600 dark:text-rose-400' : 
+                      'text-slate-500 dark:text-slate-400'
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tóm tắt AI</span>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-0.5">
+                      {item.aiSummary}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer */}
+      {data.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Clock size={12} />
+              <span>Cập nhật liên tục</span>
+            </div>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+              <Globe size={12} />
+              Xem tất cả tin tức
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -605,6 +922,154 @@ const analyzeTechnicalSignals = (data: CandlestickData[]): AIAlert[] => {
   return alerts;
 };
 
+// --- Technical Indicators Calculation ---
+interface TechnicalIndicators {
+  rsi14: number | null;
+  ma20: number | null;
+  ma50: number | null;
+  macd: number | null;
+  macdSignal: number | null;
+  rs: number | null; // Relative Strength vs VN-Index
+  avgVolume20: number | null;
+  priceChange5d: number | null;
+  priceChange20d: number | null;
+  volatility: number | null;
+  pricePosition: number | null; // Position within 52-week range
+}
+
+const calculateTechnicalIndicators = (data: CandlestickData[]): TechnicalIndicators => {
+  const result: TechnicalIndicators = {
+    rsi14: null,
+    ma20: null,
+    ma50: null,
+    macd: null,
+    macdSignal: null,
+    rs: null,
+    avgVolume20: null,
+    priceChange5d: null,
+    priceChange20d: null,
+    volatility: null,
+    pricePosition: null,
+  };
+
+  if (data.length < 2) return result;
+
+  const closes = data.map(d => d.close);
+  const n = closes.length;
+
+  // RSI 14
+  if (n >= 15) {
+    const changes = [];
+    for (let i = 1; i < n; i++) {
+      changes.push(closes[i] - closes[i - 1]);
+    }
+    const recentChanges = changes.slice(-14);
+    const gains = recentChanges.filter(c => c > 0);
+    const losses = recentChanges.filter(c => c < 0).map(c => Math.abs(c));
+    const avgGain = gains.length > 0 ? gains.reduce((a, b) => a + b, 0) / 14 : 0;
+    const avgLoss = losses.length > 0 ? losses.reduce((a, b) => a + b, 0) / 14 : 0;
+    if (avgLoss === 0) {
+      result.rsi14 = 100;
+    } else {
+      const rs = avgGain / avgLoss;
+      result.rsi14 = 100 - (100 / (1 + rs));
+    }
+  }
+
+  // MA20
+  if (n >= 20) {
+    result.ma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  }
+
+  // MA50
+  if (n >= 50) {
+    result.ma50 = closes.slice(-50).reduce((a, b) => a + b, 0) / 50;
+  }
+
+  // MACD (12, 26, 9)
+  if (n >= 26) {
+    const ema12 = calculateEMA(closes, 12);
+    const ema26 = calculateEMA(closes, 26);
+    result.macd = ema12 - ema26;
+    
+    // Signal line (9-day EMA of MACD) - simplified
+    if (n >= 35) {
+      const macdLine = [];
+      for (let i = 25; i < n; i++) {
+        const e12 = calculateEMA(closes.slice(0, i + 1), 12);
+        const e26 = calculateEMA(closes.slice(0, i + 1), 26);
+        macdLine.push(e12 - e26);
+      }
+      if (macdLine.length >= 9) {
+        result.macdSignal = calculateEMA(macdLine, 9);
+      }
+    }
+  }
+
+  // RS (Relative Strength) - Performance vs benchmark (simplified: 3-month return rank)
+  if (n >= 60) {
+    const return3m = ((closes[n - 1] - closes[n - 60]) / closes[n - 60]) * 100;
+    // RS Score: normalize to 0-100 scale based on typical stock returns
+    // Assuming -30% to +50% range maps to 0-100
+    result.rs = Math.max(0, Math.min(100, ((return3m + 30) / 80) * 100));
+  } else if (n >= 20) {
+    const return1m = ((closes[n - 1] - closes[n - 20]) / closes[n - 20]) * 100;
+    result.rs = Math.max(0, Math.min(100, ((return1m + 15) / 40) * 100));
+  }
+
+  // Average Volume 20
+  if (n >= 20) {
+    const volumes = data.slice(-20).map(d => d.volume);
+    result.avgVolume20 = volumes.reduce((a, b) => a + b, 0) / 20;
+  }
+
+  // Price Change 5 days
+  if (n >= 5) {
+    result.priceChange5d = ((closes[n - 1] - closes[n - 5]) / closes[n - 5]) * 100;
+  }
+
+  // Price Change 20 days
+  if (n >= 20) {
+    result.priceChange20d = ((closes[n - 1] - closes[n - 20]) / closes[n - 20]) * 100;
+  }
+
+  // Volatility (20-day standard deviation of returns)
+  if (n >= 21) {
+    const returns = [];
+    for (let i = n - 20; i < n; i++) {
+      returns.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+    }
+    const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+    const variance = returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length;
+    result.volatility = Math.sqrt(variance) * Math.sqrt(252) * 100; // Annualized volatility %
+  }
+
+  // Price Position (within period high-low range)
+  if (n > 0) {
+    const highs = data.map(d => d.high);
+    const lows = data.map(d => d.low);
+    const periodHigh = Math.max(...highs);
+    const periodLow = Math.min(...lows);
+    const currentPrice = closes[n - 1];
+    if (periodHigh !== periodLow) {
+      result.pricePosition = ((currentPrice - periodLow) / (periodHigh - periodLow)) * 100;
+    }
+  }
+
+  return result;
+};
+
+// Helper: Calculate EMA
+const calculateEMA = (data: number[], period: number): number => {
+  if (data.length < period) return data[data.length - 1];
+  const k = 2 / (period + 1);
+  let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+  }
+  return ema;
+};
+
 // --- Main Component ---
 interface StockAnalysisProps {
   isDark?: boolean;
@@ -622,23 +1087,37 @@ const roundVNPrice = (price: number): number => {
 };
 
 const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
-  const [selectedSymbol, setSelectedSymbol] = useState('VNM');
+  const [selectedSymbol, setSelectedSymbol] = useState('HPG');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Company[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [timeframe, setTimeframe] = useState('1M');
+  const [timeframe, setTimeframe] = useState('3M');
   const [viewMode, setViewMode] = useState<'chart' | 'earnings' | 'news'>('chart');
   const [showAlerts, setShowAlerts] = useState(true);
   const [showFinancialModal, setShowFinancialModal] = useState(false);
-  const [newsFilter, setNewsFilter] = useState<'all' | 'positive' | 'neutral' | 'negative'>('all');
-  
+  const [newsFilter, setNewsFilter] = useState<
+    'all' | 'positive' | 'neutral' | 'negative'
+  >('all');
+
   // Data states
   const [stockInfo, setStockInfo] = useState<StockInfo | null>(null);
   const [chartData, setChartData] = useState<CandlestickData[]>([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [financialRatio, setFinancialRatio] = useState<FinancialRatio | null>(null);
+  const [financialRatio, setFinancialRatio] = useState<FinancialRatio | null>(
+    null
+  );
+  const [newsData, setNewsData] = useState<NewsItem[]>([]);
+
+  // AI Analysis states
+  const [aiAnalysis, setAIAnalysis] = useState<AIAnalysis | null>(null);
+  const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysis | null>(null);
+  const [tradingStrategy, setTradingStrategy] =
+    useState<TradingStrategy | null>(null);
+  const [brokerRecommendations, setBrokerRecommendations] = useState<
+    BrokerRecommendation[]
+  >([]);
 
   // Listen for stock selection from global search
   useEffect(() => {
@@ -646,8 +1125,30 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
       setSelectedSymbol(e.detail);
     };
     window.addEventListener('selectStock', handleSelectStock as EventListener);
-    return () => window.removeEventListener('selectStock', handleSelectStock as EventListener);
+    return () =>
+      window.removeEventListener('selectStock', handleSelectStock as EventListener);
   }, []);
+
+  // Fetch AI Analysis data when symbol changes
+  useEffect(() => {
+    const fetchAnalysisData = async () => {
+      try {
+        const [ai, risk, strategy, brokers] = await Promise.all([
+          getAIAnalysis(selectedSymbol),
+          getRiskAnalysis(selectedSymbol),
+          getTradingStrategy(selectedSymbol),
+          getBrokerRecommendations(selectedSymbol),
+        ]);
+        setAIAnalysis(ai);
+        setRiskAnalysis(risk);
+        setTradingStrategy(strategy);
+        setBrokerRecommendations(brokers);
+      } catch (error) {
+        console.error('Error fetching analysis data:', error);
+      }
+    };
+    fetchAnalysisData();
+  }, [selectedSymbol]);
 
   // Fetch companies list
   useEffect(() => {
@@ -657,6 +1158,30 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
     };
     fetchCompanies();
   }, []);
+
+  // Fetch news when symbol changes
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const news = await getStockNews(selectedSymbol, 10);
+        const formattedNews: NewsItem[] = news.map(n => ({
+          id: n.id,
+          source: n.source,
+          time: formatTimeAgo(n.published_at),
+          title: n.title,
+          summary: n.summary,
+          sentiment: n.sentiment,
+          aiSummary: n.ai_summary,
+          url: n.url
+        }));
+        setNewsData(formattedNews);
+      } catch (error) {
+        console.error('Error fetching news:', error);
+        setNewsData([]);
+      }
+    };
+    fetchNews();
+  }, [selectedSymbol]);
 
   // Search companies
   useEffect(() => {
@@ -716,7 +1241,11 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             change: change,
             changePercent: Math.round(changePercent * 100) / 100,
             volume: latestPrice.volume,
-            marketCap: latestPrice.close_price * 1000000 // Estimate market cap
+            // Calculate market cap from outstanding shares * price
+            // outstanding_shares is in shares, price is in VND
+            marketCap: company?.outstanding_shares 
+              ? company.outstanding_shares * latestPrice.close_price 
+              : undefined
           });
           
           // Convert to candlestick data with indicators
@@ -780,8 +1309,11 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   // AI Alerts
   const aiAlerts = useMemo(() => analyzeTechnicalSignals(chartData), [chartData]);
   
-  // Filtered news
-  const filteredNews = SHARED_NEWS_DATA.filter(item => newsFilter === 'all' || item.sentiment === newsFilter);
+  // Technical Indicators - calculated from chart data
+  const techIndicators = useMemo(() => calculateTechnicalIndicators(chartData), [chartData]);
+  
+  // Filtered news from database
+  const filteredNews = newsData.filter(item => newsFilter === 'all' || item.sentiment === newsFilter);
 
   // Broker data
   const brokerData = [
@@ -817,9 +1349,19 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           {/* Stock Selector */}
           <div className="flex items-center gap-4">
-            {/* Stock Symbol Badge */}
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-indigo-500/20">
-              {selectedSymbol.slice(0, 3)}
+            {/* Stock Logo */}
+            <div className="w-14 h-14 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-lg">
+              <img 
+                src={`https://finance.vietstock.vn/image/${selectedSymbol}`}
+                alt={selectedSymbol}
+                className="w-10 h-10 object-contain"
+                onError={(e) => {
+                  // Fallback to gradient badge if logo fails
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  target.parentElement!.innerHTML = `<span class="text-xl font-bold bg-gradient-to-br from-indigo-500 to-purple-600 bg-clip-text text-transparent">${selectedSymbol.slice(0, 3)}</span>`;
+                }}
+              />
             </div>
             
             {/* Stock Info */}
@@ -851,46 +1393,91 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                 </>
               )}
             </div>
-            
-            {/* Search Button */}
-            <button 
-              onClick={() => setShowSearch(true)}
-              className="ml-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg flex items-center gap-2 text-slate-600 dark:text-slate-300 transition-colors border border-slate-200 dark:border-slate-600"
-            >
-              <Search size={16} />
-              <span className="text-sm font-medium">Tìm cổ phiếu</span>
-            </button>
           </div>
 
-          {/* Quick Stats - Compact */}
-          <div className="hidden md:flex items-center gap-1 text-xs">
-            <span className="text-slate-400 dark:text-slate-500">Vốn hóa</span>
-            <span className="text-slate-900 dark:text-white font-semibold mr-3">
-              {stockInfo?.marketCap ? `${(stockInfo.marketCap / 1000000000000).toFixed(1)}T` : '-'}
-            </span>
-            <span className="text-slate-400 dark:text-slate-500">KL</span>
-            <span className="text-slate-900 dark:text-white font-semibold mr-3">
-              {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(1)}M` : '-'}
-            </span>
-            <span className="text-slate-400 dark:text-slate-500">H</span>
-            <span className="text-emerald-500 font-semibold mr-3">
-              {chartData.length > 0 ? Math.max(...chartData.map(d => d.high)).toLocaleString('vi-VN') : '-'}
-            </span>
-            <span className="text-slate-400 dark:text-slate-500">L</span>
-            <span className="text-rose-500 font-semibold mr-3">
-              {chartData.length > 0 ? Math.min(...chartData.map(d => d.low)).toLocaleString('vi-VN') : '-'}
-            </span>
-            <span className="text-slate-400 dark:text-slate-500">TB</span>
-            <span className="text-indigo-500 font-semibold">
-              {chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.close, 0) / chartData.length).toLocaleString('vi-VN') : '-'}
-            </span>
+          {/* Quick Stats - Enhanced UI */}
+          <div className="hidden md:flex items-center gap-2 flex-wrap">
+            {/* Vốn hóa */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold">Vốn hóa</span>
+              <span className="text-xs text-slate-900 dark:text-white font-bold">
+                {stockInfo?.marketCap ? `${(stockInfo.marketCap / 1000000000000).toFixed(1)}T` : '--'}
+              </span>
+            </div>
+            
+            {/* Khối lượng */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold">KL</span>
+              <span className="text-xs text-slate-900 dark:text-white font-bold">
+                {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(2)}M` : '--'}
+              </span>
+            </div>
+            
+            {/* Cao nhất */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-200 dark:border-emerald-500/30">
+              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Cao</span>
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                {chartData.length > 0 ? Math.max(...chartData.map(d => d.high)).toLocaleString('vi-VN') : '--'}
+              </span>
+            </div>
+            
+            {/* Thấp nhất */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 rounded-lg border border-rose-200 dark:border-rose-500/30">
+              <span className="text-[9px] text-rose-600 dark:text-rose-400 uppercase font-bold">Thấp</span>
+              <span className="text-xs text-rose-600 dark:text-rose-400 font-bold">
+                {chartData.length > 0 ? Math.min(...chartData.map(d => d.low)).toLocaleString('vi-VN') : '--'}
+              </span>
+            </div>
+            
+            {/* Trung bình */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
+              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 uppercase font-bold">TB</span>
+              <span className="text-xs text-indigo-600 dark:text-indigo-400 font-bold">
+                {chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.close, 0) / chartData.length).toLocaleString('vi-VN') : '--'}
+              </span>
+            </div>
+
+            {/* Divider */}
+            <div className="h-8 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
+            
+            {/* P/E */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-purple-50 dark:bg-purple-500/10 rounded-lg border border-purple-200 dark:border-purple-500/30">
+              <span className="text-[9px] text-purple-600 dark:text-purple-400 uppercase font-bold">P/E</span>
+              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">
+                {financialRatio?.pe_ratio ? financialRatio.pe_ratio.toFixed(1) : '--'}
+              </span>
+            </div>
+            
+            {/* P/B */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-purple-50 dark:bg-purple-500/10 rounded-lg border border-purple-200 dark:border-purple-500/30">
+              <span className="text-[9px] text-purple-600 dark:text-purple-400 uppercase font-bold">P/B</span>
+              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">
+                {financialRatio?.pb_ratio ? financialRatio.pb_ratio.toFixed(2) : '--'}
+              </span>
+            </div>
+            
+            {/* ROE */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/30">
+              <span className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold">ROE</span>
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
+                {financialRatio?.roe ? `${(financialRatio.roe * 100).toFixed(1)}%` : '--'}
+              </span>
+            </div>
+            
+            {/* EPS */}
+            <div className="flex flex-col items-center px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/30">
+              <span className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold">EPS</span>
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
+                {financialRatio?.eps ? Math.round(financialRatio.eps).toLocaleString('vi-VN') : '--'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* SECTION 2: CANDLESTICK CHART */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-9 glass-panel p-0 rounded-2xl flex flex-col h-[500px] border border-slate-200 dark:border-white/5 relative overflow-hidden">
+        <div className="lg:col-span-9 glass-panel p-0 rounded-2xl flex flex-col h-[600px] border border-slate-200 dark:border-white/5 relative overflow-hidden">
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-slate-200 dark:border-white/5 z-10 relative bg-white/60 dark:bg-[#0b0f19]/60 backdrop-blur-md gap-3">
             {/* View Mode Switcher */}
@@ -916,35 +1503,17 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               {viewMode === 'chart' && (
-                <>
-                  <button
-                    onClick={() => setShowAlerts(!showAlerts)}
-                    className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
-                      showAlerts
-                        ? 'bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/50'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent'
-                    }`}
-                  >
-                    <Zap size={12} className={showAlerts ? "fill-current" : ""} />
-                    AI Monitor {showAlerts ? 'ON' : 'OFF'}
-                  </button>
-
-                  <div className="flex bg-slate-100 dark:bg-slate-900/80 rounded-lg p-0.5 border border-slate-200 dark:border-white/10">
-                    {['1W', '1M', '3M', '6M', '1Y', '2Y'].map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => setTimeframe(t)}
-                        className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${
-                          timeframe === t
-                            ? 'bg-indigo-600 text-white shadow-sm'
-                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </>
+                <button
+                  onClick={() => setShowAlerts(!showAlerts)}
+                  className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                    showAlerts
+                      ? 'bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/50'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent'
+                  }`}
+                >
+                  <Zap size={12} className={showAlerts ? "fill-current" : ""} />
+                  AI Monitor {showAlerts ? 'ON' : 'OFF'}
+                </button>
               )}
             </div>
           </div>
@@ -963,7 +1532,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               ) : (
                 <>
                   {/* TradingView-style Chart */}
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 h-full">
                     <TradingViewChart 
                       data={chartData.map(d => ({
                         time: d.date,
@@ -976,7 +1545,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       }))}
                       symbol={selectedSymbol}
                       isDark={isDark}
-                      height={400}
+                      height={520}
                       showVolume={true}
                       showMA={true}
                       currentTimeframe={timeframe}
@@ -1033,7 +1602,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
 
         {/* Right Sidebar - Fundamentals */}
-        <div className="lg:col-span-3 flex flex-col gap-2 h-[500px]">
+        <div className="lg:col-span-3 flex flex-col gap-2 h-[600px]">
           {/* News Sentiment Widget */}
           <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5 flex flex-col gap-2 shrink-0">
             <div className="flex items-center justify-between">
@@ -1057,87 +1626,121 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
           </div>
 
           <div className="flex items-center gap-2 text-sm text-slate-500 px-1 shrink-0">
-            <Layers size={16} className="text-purple-500" />
-            <span className="font-medium text-slate-900 dark:text-white">Chỉ số cơ bản</span>
+            <Activity size={16} className="text-cyan-500" />
+            <span className="font-medium text-slate-900 dark:text-white">Chỉ số PTKT</span>
           </div>
           
-          {/* Scrollable Metrics */}
+          {/* Scrollable Technical Indicators */}
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
             <MetricCard 
-              label="P/E" 
-              value={financialRatio?.pe_ratio ? financialRatio.pe_ratio.toFixed(1) : 'N/A'} 
+              label="RS Rating" 
+              value={techIndicators.rs !== null ? Math.round(techIndicators.rs).toString() : 'N/A'} 
+              sub={techIndicators.rs !== null 
+                ? (techIndicators.rs >= 80 ? 'Rất mạnh' : techIndicators.rs >= 60 ? 'Mạnh' : techIndicators.rs >= 40 ? 'Trung bình' : 'Yếu')
+                : undefined}
+              icon={TrendingUp} 
+            />
+            <MetricCard 
+              label="RSI (14)" 
+              value={techIndicators.rsi14 !== null ? Math.round(techIndicators.rsi14).toString() : 'N/A'} 
+              sub={techIndicators.rsi14 !== null 
+                ? (techIndicators.rsi14 > 70 ? 'Quá mua' : techIndicators.rsi14 < 30 ? 'Quá bán' : 'Trung tính')
+                : undefined}
               icon={Activity} 
             />
             <MetricCard 
-              label="P/B" 
-              value={financialRatio?.pb_ratio ? financialRatio.pb_ratio.toFixed(2) : 'N/A'} 
+              label="MA20" 
+              value={techIndicators.ma20 !== null ? Math.round(techIndicators.ma20).toLocaleString('vi-VN') : 'N/A'} 
+              sub={techIndicators.ma20 !== null && stockInfo
+                ? (stockInfo.price > techIndicators.ma20 ? '↑ Trên MA' : '↓ Dưới MA')
+                : undefined}
               icon={Activity} 
             />
             <MetricCard 
-              label="ROE" 
-              value={financialRatio?.roe ? `${(financialRatio.roe * 100).toFixed(1)}%` : 'N/A'} 
+              label="MACD" 
+              value={techIndicators.macd !== null ? techIndicators.macd.toFixed(0) : 'N/A'} 
+              sub={techIndicators.macd !== null && techIndicators.macdSignal !== null
+                ? (techIndicators.macd > techIndicators.macdSignal ? '↑ Bullish' : '↓ Bearish')
+                : undefined}
               icon={Activity} 
             />
             <MetricCard 
-              label="ROA" 
-              value={financialRatio?.roa ? `${(financialRatio.roa * 100).toFixed(1)}%` : 'N/A'} 
+              label="Biến động" 
+              value={techIndicators.volatility !== null ? `${techIndicators.volatility.toFixed(1)}%` : 'N/A'} 
+              sub="Năm hóa"
               icon={Activity} 
             />
             <MetricCard 
-              label="EPS" 
-              value={financialRatio?.eps ? financialRatio.eps.toLocaleString('vi-VN') : 'N/A'} 
-              icon={Activity} 
+              label="Thay đổi 5D" 
+              value={techIndicators.priceChange5d !== null 
+                ? `${techIndicators.priceChange5d >= 0 ? '+' : ''}${techIndicators.priceChange5d.toFixed(1)}%` 
+                : 'N/A'} 
+              icon={TrendingUp} 
             />
             <MetricCard 
-              label="Biên LN gộp" 
-              value={financialRatio?.gross_margin ? `${(financialRatio.gross_margin * 100).toFixed(1)}%` : 'N/A'} 
-              icon={Activity} 
+              label="KL TB 20" 
+              value={techIndicators.avgVolume20 !== null 
+                ? `${(techIndicators.avgVolume20 / 1000000).toFixed(2)}M` 
+                : 'N/A'} 
+              icon={BarChart2} 
             />
             <MetricCard 
-              label="Biên LN ròng" 
-              value={financialRatio?.net_margin ? `${(financialRatio.net_margin * 100).toFixed(1)}%` : 'N/A'} 
-              icon={Activity} 
+              label="Vị thế giá" 
+              value={techIndicators.pricePosition !== null 
+                ? `${Math.round(techIndicators.pricePosition)}%` 
+                : 'N/A'} 
+              sub="Trong biên độ"
+              icon={Target} 
             />
-            <MetricCard 
-              label="Nợ/Vốn CSH" 
-              value={financialRatio?.debt_to_equity ? financialRatio.debt_to_equity.toFixed(2) : 'N/A'} 
-              icon={Activity} 
-            />
-          </div>
-          
-          <div className="shrink-0 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-3 border border-indigo-200 dark:border-indigo-500/20 text-center">
-            <p className="text-xs text-indigo-600 dark:text-indigo-300 mb-2">Báo cáo tài chính chi tiết</p>
-            <button
-              onClick={() => setShowFinancialModal(true)}
-              className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors"
-            >
-              Xem chi tiết
-            </button>
           </div>
         </div>
       </div>
 
       {/* SECTION 3: AI INTELLIGENCE DECK */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ isolation: 'isolate' }}>
+      <div
+        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        style={{ isolation: 'isolate' }}
+      >
         {/* SenAI Health */}
         <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-teal-500/20 h-[200px] overflow-hidden">
           <div className="bg-white dark:bg-[#0b0f19] p-4 border-b border-slate-200 dark:border-white/5 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2">
               <BrainCircuit size={18} className="text-teal-500" />
-              <span className="font-bold text-slate-900 dark:text-white text-sm">Chẩn đoán SenAI</span>
+              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                Chẩn đoán SenAI
+              </span>
             </div>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-              (stockInfo?.changePercent || 0) >= 0 
-                ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20' 
-                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-            }`}>
-              {(stockInfo?.changePercent || 0) >= 0 ? 'MUA' : 'BÁN'}
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                aiAnalysis?.recommendation === 'MUA'
+                  ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20'
+                  : aiAnalysis?.recommendation === 'BÁN'
+                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+              }`}
+            >
+              {aiAnalysis?.recommendation || 'THEO DÕI'}
             </span>
           </div>
           <div className="p-3 flex-1 grid grid-cols-3 gap-2 overflow-hidden">
-            <SenAIGauge value={74} label="Rating" color="#14b8a6" isDark={isDark} />
-            <SenAIGauge value={93} label="Score" color="#10b981" isDark={isDark} />
-            <SenAIGauge value={55} label="Signal" color="#f59e0b" isDark={isDark} />
+            <SenAIGauge
+              value={aiAnalysis?.rating || 0}
+              label="Rating"
+              color="#14b8a6"
+              isDark={isDark}
+            />
+            <SenAIGauge
+              value={aiAnalysis?.score || 0}
+              label="Score"
+              color="#10b981"
+              isDark={isDark}
+            />
+            <SenAIGauge
+              value={aiAnalysis?.signal || 0}
+              label="Signal"
+              color="#f59e0b"
+              isDark={isDark}
+            />
           </div>
         </div>
 
@@ -1145,34 +1748,57 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
         <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-blue-500/20 h-[200px] overflow-hidden">
           <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center gap-2 shrink-0">
             <Activity size={18} className="text-blue-500" />
-            <span className="font-bold text-slate-900 dark:text-white text-sm">Xác suất & Rủi ro</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">
+              Xác suất & Rủi ro
+            </span>
           </div>
           <div className="p-3 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
             <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-200 dark:border-white/5">
               <div className="flex items-center gap-2">
-                <div className="bg-blue-500/10 p-1.5 rounded-full text-blue-500"><Clock size={14} /></div>
-                <span className="text-xs text-slate-600 dark:text-slate-300">Nắm giữ tối ưu</span>
+                <div className="bg-blue-500/10 p-1.5 rounded-full text-blue-500">
+                  <Clock size={14} />
+                </div>
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  Nắm giữ tối ưu
+                </span>
               </div>
-              <span className="text-base font-bold text-slate-900 dark:text-white">55 <span className="text-[10px] font-normal text-slate-500">ngày</span></span>
+              <span className="text-base font-bold text-slate-900 dark:text-white">
+                {riskAnalysis?.optimal_holding_days || '--'}{' '}
+                <span className="text-[10px] font-normal text-slate-500">
+                  ngày
+                </span>
+              </span>
             </div>
-            
+
             <div className="space-y-2">
               <div>
                 <div className="flex justify-between text-[10px] mb-1">
                   <span className="text-slate-500">Xác suất tăng ngắn hạn</span>
-                  <span className="text-emerald-500 font-bold">70.7%</span>
+                  <span className="text-emerald-500 font-bold">
+                    {riskAnalysis?.upside_probability?.toFixed(1) || '--'}%
+                  </span>
                 </div>
                 <div className="h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 w-[70%] rounded-full"></div>
+                  <div
+                    className="h-full bg-emerald-500 rounded-full"
+                    style={{
+                      width: `${riskAnalysis?.upside_probability || 0}%`,
+                    }}
+                  ></div>
                 </div>
               </div>
               <div>
                 <div className="flex justify-between text-[10px] mb-1">
                   <span className="text-slate-500">Rủi ro điều chỉnh</span>
-                  <span className="text-rose-500 font-bold">30.9%</span>
+                  <span className="text-rose-500 font-bold">
+                    {riskAnalysis?.downside_risk?.toFixed(1) || '--'}%
+                  </span>
                 </div>
                 <div className="h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-rose-500 w-[30%] rounded-full"></div>
+                  <div
+                    className="h-full bg-rose-500 rounded-full"
+                    style={{ width: `${riskAnalysis?.downside_risk || 0}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
@@ -1183,52 +1809,140 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
         <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-indigo-500/20 h-[200px] overflow-hidden">
           <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center gap-2 shrink-0">
             <Target size={18} className="text-indigo-500" />
-            <span className="font-bold text-slate-900 dark:text-white text-sm">Chiến lược giao dịch</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">
+              Chiến lược giao dịch
+            </span>
           </div>
-          
+
           <div className="p-4 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
-            {stockInfo && chartData.length > 0 && (
-              <>
-                <div className="flex items-center justify-between p-2 bg-teal-500/10 border border-teal-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={14} className="text-teal-600 dark:text-teal-400" />
-                    <span className="text-xs font-medium text-teal-700 dark:text-teal-100">Vùng mua</span>
-                  </div>
-                  <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    {roundVNPrice(Math.min(...chartData.map(d => d.low))).toLocaleString()} - {roundVNPrice(stockInfo.price * 0.98).toLocaleString()}
-                  </span>
-                </div>
+            <div className="flex items-center justify-between p-2 bg-teal-500/10 border border-teal-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <CheckCircle2
+                  size={14}
+                  className="text-teal-600 dark:text-teal-400"
+                />
+                <span className="text-xs font-medium text-teal-700 dark:text-teal-100">
+                  Vùng mua
+                </span>
+              </div>
+              <span className="text-slate-900 dark:text-white font-bold text-sm">
+                {tradingStrategy
+                  ? `${tradingStrategy.buy_zone_low?.toLocaleString()} - ${tradingStrategy.buy_zone_high?.toLocaleString()}`
+                  : stockInfo && chartData.length > 0
+                    ? `${roundVNPrice(Math.min(...chartData.map((d) => d.low))).toLocaleString()} - ${roundVNPrice(stockInfo.price * 0.98).toLocaleString()}`
+                    : '--'}
+              </span>
+            </div>
 
-                <div className="flex items-center justify-between p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert size={14} className="text-rose-500" />
-                    <span className="text-xs font-medium text-rose-700 dark:text-rose-100">Cắt lỗ</span>
-                  </div>
-                  <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    &lt; {roundVNPrice(Math.min(...chartData.map(d => d.low)) * 0.95).toLocaleString()}
-                  </span>
-                </div>
+            <div className="flex items-center justify-between p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={14} className="text-rose-500" />
+                <span className="text-xs font-medium text-rose-700 dark:text-rose-100">
+                  Cắt lỗ
+                </span>
+              </div>
+              <span className="text-slate-900 dark:text-white font-bold text-sm">
+                &lt;{' '}
+                {tradingStrategy
+                  ? tradingStrategy.stop_loss?.toLocaleString()
+                  : stockInfo && chartData.length > 0
+                    ? roundVNPrice(
+                        Math.min(...chartData.map((d) => d.low)) * 0.95
+                      ).toLocaleString()
+                    : '--'}
+              </span>
+            </div>
 
-                <div className="flex items-center justify-between p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <Target size={14} className="text-indigo-600 dark:text-indigo-400" />
-                    <span className="text-xs font-medium text-indigo-700 dark:text-indigo-100">Mục tiêu</span>
-                  </div>
-                  <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    {roundVNPrice(stockInfo.price * 1.1).toLocaleString()} - {roundVNPrice(stockInfo.price * 1.2).toLocaleString()}
-                  </span>
-                </div>
-              </>
-            )}
+            <div className="flex items-center justify-between p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Target
+                  size={14}
+                  className="text-indigo-600 dark:text-indigo-400"
+                />
+                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-100">
+                  Mục tiêu
+                </span>
+              </div>
+              <span className="text-slate-900 dark:text-white font-bold text-sm">
+                {tradingStrategy
+                  ? `${tradingStrategy.target_1?.toLocaleString()} - ${tradingStrategy.target_2?.toLocaleString()}`
+                  : stockInfo
+                    ? `${roundVNPrice(stockInfo.price * 1.1).toLocaleString()} - ${roundVNPrice(stockInfo.price * 1.2).toLocaleString()}`
+                    : '--'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* SECTION 4: BROKER CONSENSUS */}
       <div className="glass-panel p-6 rounded-2xl border-t border-slate-200 dark:border-slate-700/50">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Đồng thuận từ CTCK</h3>
-          <span className="text-xs text-slate-500">Cập nhật: Hôm nay</span>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+              Đồng thuận từ CTCK
+            </h3>
+            <span className="text-xs text-slate-500">Cập nhật: Hôm nay</span>
+          </div>
+          
+          {/* Average Target Price Summary */}
+          {(brokerRecommendations.length > 0 || brokerData.length > 0) && (
+            <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/30 dark:to-purple-900/20 rounded-xl border border-indigo-200 dark:border-indigo-500/30">
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1">Giá mục tiêu TB</p>
+                <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+                  {(() => {
+                    if (brokerRecommendations.length > 0) {
+                      const validPrices = brokerRecommendations.filter(r => r.target_price);
+                      if (validPrices.length === 0) return '--';
+                      const avg = validPrices.reduce((sum, r) => sum + (r.target_price || 0), 0) / validPrices.length;
+                      return Math.round(avg).toLocaleString();
+                    } else if (brokerData.length > 0) {
+                      const avg = brokerData.reduce((sum, r) => sum + parseFloat(r.price.replace(',', '')) * 1000, 0) / brokerData.length;
+                      return Math.round(avg).toLocaleString();
+                    }
+                    return '--';
+                  })()}
+                </p>
+              </div>
+              <div className="h-10 w-px bg-slate-300 dark:bg-slate-600"></div>
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1">Số CTCK</p>
+                <p className="text-xl font-bold text-slate-700 dark:text-slate-300">
+                  {brokerRecommendations.length > 0 ? brokerRecommendations.length : brokerData.length}
+                </p>
+              </div>
+              {stockInfo && (
+                <>
+                  <div className="h-10 w-px bg-slate-300 dark:bg-slate-600"></div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold mb-1">Upside</p>
+                    <p className={`text-xl font-bold ${(() => {
+                      const avgTarget = brokerRecommendations.length > 0
+                        ? brokerRecommendations.filter(r => r.target_price).reduce((sum, r) => sum + (r.target_price || 0), 0) / 
+                          (brokerRecommendations.filter(r => r.target_price).length || 1)
+                        : brokerData.length > 0
+                          ? brokerData.reduce((sum, r) => sum + parseFloat(r.price.replace(',', '')) * 1000, 0) / brokerData.length
+                          : 0;
+                      const upside = stockInfo.price > 0 ? ((avgTarget - stockInfo.price) / stockInfo.price) * 100 : 0;
+                      return upside >= 0 ? 'text-emerald-500' : 'text-rose-500';
+                    })()}`}>
+                      {(() => {
+                        const avgTarget = brokerRecommendations.length > 0
+                          ? brokerRecommendations.filter(r => r.target_price).reduce((sum, r) => sum + (r.target_price || 0), 0) / 
+                            (brokerRecommendations.filter(r => r.target_price).length || 1)
+                          : brokerData.length > 0
+                            ? brokerData.reduce((sum, r) => sum + parseFloat(r.price.replace(',', '')) * 1000, 0) / brokerData.length
+                            : 0;
+                        const upside = stockInfo.price > 0 ? ((avgTarget - stockInfo.price) / stockInfo.price) * 100 : 0;
+                        return `${upside >= 0 ? '+' : ''}${upside.toFixed(1)}%`;
+                      })()}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -1242,9 +1956,47 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               </tr>
             </thead>
             <tbody>
-              {brokerData.map((row, idx) => (
-                <tr key={idx} className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-white/5 text-sm">
-                  <td className="py-4 pl-2 text-slate-600 dark:text-slate-300 font-mono">{row.date}</td>
+              {brokerRecommendations.length > 0
+                ? brokerRecommendations.map((row, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-white/5 text-sm"
+                    >
+                      <td className="py-4 pl-2 text-slate-600 dark:text-slate-300 font-mono">
+                        {new Date(row.recommendation_date).toLocaleDateString(
+                          'vi-VN'
+                        )}
+                      </td>
+                      <td className="py-4 text-slate-800 dark:text-white font-medium">
+                        {row.broker_code}
+                      </td>
+                      <td
+                        className={`py-4 font-bold ${
+                          row.action === 'MUA' || row.action === 'KHẢ QUAN'
+                            ? 'text-emerald-500'
+                            : row.action === 'BÁN' || row.action === 'TIÊU CỰC'
+                              ? 'text-rose-500'
+                              : 'text-amber-500'
+                        }`}
+                      >
+                        {row.action}
+                      </td>
+                      <td className="py-4 text-slate-600 dark:text-slate-200 font-mono">
+                        {row.target_price?.toLocaleString()}
+                      </td>
+                      <td className="py-4 text-slate-500 dark:text-slate-400 text-xs max-w-xs truncate">
+                        {row.rationale}
+                      </td>
+                    </tr>
+                  ))
+                : brokerData.map((row, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-slate-100 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-white/5 text-sm"
+                    >
+                      <td className="py-4 pl-2 text-slate-600 dark:text-slate-300 font-mono">
+                        {row.date}
+                      </td>
                   <td className="py-4 text-slate-800 dark:text-white font-medium">{row.firm}</td>
                   <td className={`py-4 font-bold ${row.color}`}>{row.action}</td>
                   <td className="py-4 text-slate-600 dark:text-slate-200 font-mono">{row.price}</td>
@@ -1317,8 +2069,17 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       className="w-full px-4 py-3 text-left hover:bg-indigo-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-between group border-b border-slate-100 dark:border-slate-800"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                          {company.symbol.slice(0, 3)}
+                        <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center overflow-hidden shadow-md">
+                          <img 
+                            src={`https://finance.vietstock.vn/image/${company.symbol}`}
+                            alt={company.symbol}
+                            className="w-9 h-9 object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              target.parentElement!.innerHTML = `<span class="text-sm font-bold text-indigo-600 dark:text-indigo-400">${company.symbol.slice(0, 3)}</span>`;
+                            }}
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
@@ -1359,8 +2120,17 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       className="w-full px-4 py-3 text-left hover:bg-indigo-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-between group border-b border-slate-100 dark:border-slate-800"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                          {company.symbol.slice(0, 3)}
+                        <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center overflow-hidden shadow-md">
+                          <img 
+                            src={`https://finance.vietstock.vn/image/${company.symbol}`}
+                            alt={company.symbol}
+                            className="w-9 h-9 object-contain"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              target.parentElement!.innerHTML = `<span class="text-sm font-bold text-indigo-600 dark:text-indigo-400">${company.symbol.slice(0, 3)}</span>`;
+                            }}
+                          />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
