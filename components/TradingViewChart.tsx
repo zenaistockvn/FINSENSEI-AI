@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   TrendingUp, TrendingDown, Maximize2, Minimize2, Settings,
   ZoomIn, ZoomOut, Crosshair, BarChart2, Activity, Layers,
-  ChevronDown, RefreshCw, Download, Camera
+  ChevronDown, RefreshCw, Download, Camera, Minus, MousePointer2,
+  PenLine, GitBranch, ArrowUpRight, Lock, Unlock, Trash2, Eye, EyeOff
 } from 'lucide-react';
 
 // Types
@@ -16,6 +17,21 @@ interface CandleData {
   volume: number;
 }
 
+// Drawing tool types
+type DrawingTool = 'none' | 'trendline' | 'horizontal' | 'fibonacci' | 'rectangle';
+
+interface DrawingLine {
+  id: string;
+  type: DrawingTool;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  color: string;
+  locked: boolean;
+  visible: boolean;
+}
+
 interface ChartProps {
   data: CandleData[];
   symbol: string;
@@ -26,6 +42,8 @@ interface ChartProps {
   showBollinger?: boolean;
   showRSI?: boolean;
   showMACD?: boolean;
+  onTimeframeChange?: (timeframe: string) => void;
+  currentTimeframe?: string;
 }
 
 interface Indicator {
@@ -275,17 +293,28 @@ const TradingViewChart: React.FC<ChartProps> = ({
   showMA = true,
   showBollinger = false,
   showRSI = false,
-  showMACD = false
+  showMACD = false,
+  onTimeframeChange,
+  currentTimeframe = '1Y'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height });
-  const [crosshair, setCrosshair] = useState<{ x: number; y: number; visible: boolean }>({ x: 0, y: 0, visible: false });
+  const [crosshair, setCrosshair] = useState<{ x: number; y: number; visible: boolean; sticky: boolean }>({ x: 0, y: 0, visible: false, sticky: false });
   const [hoveredCandle, setHoveredCandle] = useState<CandleData | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
+  
+  // Drawing tools state
+  const [activeTool, setActiveTool] = useState<DrawingTool>('none');
+  const [drawings, setDrawings] = useState<DrawingLine[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentDrawing, setCurrentDrawing] = useState<DrawingLine | null>(null);
+  const [showDrawingTools, setShowDrawingTools] = useState(false);
+  const [showPeaksTroughs, setShowPeaksTroughs] = useState(true);
+  
   const [activeIndicators, setActiveIndicators] = useState({
     ma5: false, ma10: false, ma20: true, ma50: true,
     bollinger: showBollinger, rsi: showRSI, macd: showMACD, volume: showVolume,
@@ -327,8 +356,12 @@ const TradingViewChart: React.FC<ChartProps> = ({
   // Calculate indicators
   const indicators = useMemo(() => calculateIndicators(data), [data]);
 
-  // Find peaks and troughs (đỉnh và đáy) - lookback 20 ngày cho 1Y view
-  const peaksAndTroughs = useMemo(() => findPeaksAndTroughs(data, 20), [data]);
+  // Smart peaks/troughs - only show significant ones based on zoom
+  const visiblePeaksTroughs = useMemo(() => {
+    if (!showPeaksTroughs) return [];
+    const lookback = zoom > 3 ? 10 : zoom > 2 ? 15 : 20;
+    return findPeaksAndTroughs(data, lookback);
+  }, [data, zoom, showPeaksTroughs]);
 
   // Layout calculations
   const layout = useMemo(() => {
@@ -680,46 +713,108 @@ const TradingViewChart: React.FC<ChartProps> = ({
       }
     });
 
-    // Draw peaks and troughs markers (đỉnh và đáy)
-    peaksAndTroughs.forEach(pt => {
-      const visibleIdx = pt.index - startIdx;
-      if (visibleIdx >= 0 && visibleIdx < visibleData.length) {
-        const x = indexToX(visibleIdx);
-        const y = priceToY(pt.price);
-        
-        if (pt.type === 'peak') {
-          // Draw peak marker (đỉnh) - triangle pointing down above the candle
-          ctx.fillStyle = '#f59e0b'; // Amber color
-          ctx.beginPath();
-          ctx.moveTo(x, y - 15);
-          ctx.lineTo(x - 6, y - 25);
-          ctx.lineTo(x + 6, y - 25);
-          ctx.closePath();
-          ctx.fill();
+    // Draw peaks and troughs markers (đỉnh và đáy) - smart display based on zoom
+    if (showPeaksTroughs) {
+      visiblePeaksTroughs.forEach(pt => {
+        const visibleIdx = pt.index - startIdx;
+        if (visibleIdx >= 0 && visibleIdx < visibleData.length) {
+          const x = indexToX(visibleIdx);
+          const y = priceToY(pt.price);
           
-          // Price label
-          ctx.fillStyle = '#f59e0b';
-          ctx.font = 'bold 10px Inter, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(pt.price.toLocaleString(), x, y - 28);
-        } else {
-          // Draw trough marker (đáy) - triangle pointing up below the candle
-          ctx.fillStyle = '#06b6d4'; // Cyan color
-          ctx.beginPath();
-          ctx.moveTo(x, y + 15);
-          ctx.lineTo(x - 6, y + 25);
-          ctx.lineTo(x + 6, y + 25);
-          ctx.closePath();
-          ctx.fill();
-          
-          // Price label
-          ctx.fillStyle = '#06b6d4';
-          ctx.font = 'bold 10px Inter, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(pt.price.toLocaleString(), x, y + 38);
+          if (pt.type === 'peak') {
+            // Draw peak marker (đỉnh) - triangle pointing down above the candle
+            ctx.fillStyle = '#f59e0b'; // Amber color
+            ctx.beginPath();
+            ctx.moveTo(x, y - 15);
+            ctx.lineTo(x - 6, y - 25);
+            ctx.lineTo(x + 6, y - 25);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Price label
+            ctx.fillStyle = '#f59e0b';
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(pt.price.toLocaleString(), x, y - 28);
+          } else {
+            // Draw trough marker (đáy) - triangle pointing up below the candle
+            ctx.fillStyle = '#06b6d4'; // Cyan color
+            ctx.beginPath();
+            ctx.moveTo(x, y + 15);
+            ctx.lineTo(x - 6, y + 25);
+            ctx.lineTo(x + 6, y + 25);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Price label
+            ctx.fillStyle = '#06b6d4';
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(pt.price.toLocaleString(), x, y + 38);
+          }
         }
+      });
+    }
+
+    // Draw user drawings (trendlines, horizontals, etc.)
+    drawings.forEach(drawing => {
+      if (!drawing.visible) return;
+      
+      ctx.strokeStyle = drawing.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash(drawing.type === 'fibonacci' ? [5, 5] : []);
+      
+      if (drawing.type === 'horizontal') {
+        ctx.beginPath();
+        ctx.moveTo(margin.left, drawing.startY);
+        ctx.lineTo(margin.left + width, drawing.startY);
+        ctx.stroke();
+        
+        // Price label
+        const price = priceScale.max - ((drawing.startY - margin.top) / chartHeight) * priceScale.range;
+        ctx.fillStyle = drawing.color;
+        ctx.font = '10px Inter, sans-serif';
+        ctx.fillText(formatPrice(price), margin.left + width + 5, drawing.startY + 4);
+      } else if (drawing.type === 'trendline' || drawing.type === 'rectangle') {
+        ctx.beginPath();
+        ctx.moveTo(drawing.startX, drawing.startY);
+        ctx.lineTo(drawing.endX, drawing.endY);
+        ctx.stroke();
+      } else if (drawing.type === 'fibonacci') {
+        // Draw Fibonacci retracement levels
+        const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+        const yDiff = drawing.endY - drawing.startY;
+        
+        levels.forEach((level, i) => {
+          const y = drawing.startY + yDiff * level;
+          ctx.globalAlpha = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(Math.min(drawing.startX, drawing.endX), y);
+          ctx.lineTo(Math.max(drawing.startX, drawing.endX), y);
+          ctx.stroke();
+          
+          // Level label
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = drawing.color;
+          ctx.font = '10px Inter, sans-serif';
+          ctx.fillText(`${(level * 100).toFixed(1)}%`, Math.max(drawing.startX, drawing.endX) + 5, y + 4);
+        });
       }
+      
+      ctx.setLineDash([]);
     });
+
+    // Draw current drawing in progress
+    if (isDrawing && currentDrawing) {
+      ctx.strokeStyle = currentDrawing.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(currentDrawing.startX, currentDrawing.startY);
+      ctx.lineTo(currentDrawing.endX, currentDrawing.endY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     
     // Draw volume bars
@@ -914,7 +1009,7 @@ const TradingViewChart: React.FC<ChartProps> = ({
       }
     });
     
-  }, [visibleData, dimensions, colors, layout, priceScale, volumeScale, activeIndicators, indicators, crosshair, isDark, data]);
+  }, [visibleData, dimensions, colors, layout, priceScale, volumeScale, activeIndicators, indicators, crosshair, isDark, data, showPeaksTroughs, visiblePeaksTroughs, drawings, isDrawing, currentDrawing]);
 
 
   // Mouse handlers
@@ -926,7 +1021,10 @@ const TradingViewChart: React.FC<ChartProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     
-    setCrosshair({ x, y, visible: true });
+    // Update crosshair (unless sticky mode is on and we're not hovering)
+    if (!crosshair.sticky) {
+      setCrosshair(prev => ({ ...prev, x, y, visible: true }));
+    }
     
     // Find hovered candle
     const { margin, width } = layout;
@@ -940,8 +1038,13 @@ const TradingViewChart: React.FC<ChartProps> = ({
       setHoveredCandle(visibleData[candleIndex]);
     }
     
-    // Handle dragging for pan
-    if (isDragging) {
+    // Handle drawing in progress
+    if (isDrawing && currentDrawing) {
+      setCurrentDrawing(prev => prev ? { ...prev, endX: x, endY: y } : null);
+    }
+    
+    // Handle dragging for pan (only if not drawing)
+    if (isDragging && activeTool === 'none') {
       const dx = e.clientX - dragStart.x;
       // More responsive panning
       const candlesPerPixel = visibleData.length / width;
@@ -950,22 +1053,61 @@ const TradingViewChart: React.FC<ChartProps> = ({
       const newPan = Math.max(0, Math.min(maxPan, dragStart.pan - panDelta));
       setPan(newPan);
     }
-  }, [layout, visibleData, isDragging, dragStart, data.length]);
+  }, [layout, visibleData, isDragging, dragStart, data.length, crosshair.sticky, isDrawing, currentDrawing, activeTool]);
 
   const handleMouseLeave = useCallback(() => {
-    setCrosshair(prev => ({ ...prev, visible: false }));
+    if (!crosshair.sticky) {
+      setCrosshair(prev => ({ ...prev, visible: false }));
+    }
     setHoveredCandle(null);
     setIsDragging(false);
-  }, []);
+    setIsDrawing(false);
+    setCurrentDrawing(null);
+  }, [crosshair.sticky]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, pan });
-  }, [pan]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Start drawing if tool is active
+    if (activeTool !== 'none') {
+      const newDrawing: DrawingLine = {
+        id: `drawing-${Date.now()}`,
+        type: activeTool,
+        startX: x,
+        startY: y,
+        endX: x,
+        endY: y,
+        color: activeTool === 'fibonacci' ? '#8b5cf6' : '#3b82f6',
+        locked: false,
+        visible: true
+      };
+      setCurrentDrawing(newDrawing);
+      setIsDrawing(true);
+    } else {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, pan });
+    }
+  }, [pan, activeTool]);
 
   const handleMouseUp = useCallback(() => {
+    // Finish drawing
+    if (isDrawing && currentDrawing) {
+      // Only save if there's actual movement
+      const dx = Math.abs(currentDrawing.endX - currentDrawing.startX);
+      const dy = Math.abs(currentDrawing.endY - currentDrawing.startY);
+      if (dx > 5 || dy > 5) {
+        setDrawings(prev => [...prev, currentDrawing]);
+      }
+      setCurrentDrawing(null);
+      setIsDrawing(false);
+    }
     setIsDragging(false);
-  }, []);
+  }, [isDrawing, currentDrawing]);
 
   // Zoom at mouse position like TradingView
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -1032,6 +1174,36 @@ const TradingViewChart: React.FC<ChartProps> = ({
     return vol.toLocaleString('en-US');
   };
 
+  // Timeframes
+  const timeframes = [
+    { id: '1D', label: '1D' },
+    { id: '1W', label: '1W' },
+    { id: '1M', label: '1M' },
+    { id: '3M', label: '3M' },
+    { id: '6M', label: '6M' },
+    { id: '1Y', label: '1Y' },
+    { id: '2Y', label: '2Y' },
+    { id: 'ALL', label: 'ALL' }
+  ];
+
+  // Drawing tools config
+  const drawingTools = [
+    { id: 'trendline' as DrawingTool, label: 'Trendline', icon: TrendingUp },
+    { id: 'horizontal' as DrawingTool, label: 'Horizontal Line', icon: Minus },
+    { id: 'fibonacci' as DrawingTool, label: 'Fibonacci', icon: GitBranch },
+    { id: 'rectangle' as DrawingTool, label: 'Rectangle', icon: BarChart2 }
+  ];
+
+  // Clear all drawings
+  const clearDrawings = () => {
+    setDrawings([]);
+    setActiveTool('none');
+  };
+
+  // Toggle sticky crosshair
+  const toggleStickyCrosshair = () => {
+    setCrosshair(prev => ({ ...prev, sticky: !prev.sticky }));
+  };
 
   // Get latest data for header
   const latestCandle = data[data.length - 1];
@@ -1042,193 +1214,151 @@ const TradingViewChart: React.FC<ChartProps> = ({
 
   return (
     <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
-      {/* Header */}
-      <div className={`px-4 py-3 border-b ${isDark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{symbol}</span>
-              {latestCandle && (
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`text-xl font-bold ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {latestCandle.close.toLocaleString()}
-                  </span>
-                  <span className={`text-sm font-medium flex items-center ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                    {isUp ? '+' : ''}{priceChange.toLocaleString()} ({priceChangePercent.toFixed(2)}%)
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {/* OHLCV Info with Date */}
-          {hoveredCandle && (
-            <div className={`flex items-center gap-4 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              <span className={`font-medium px-2 py-0.5 rounded ${isDark ? 'bg-slate-700 text-slate-200' : 'bg-slate-200 text-slate-700'}`}>
-                📅 {hoveredCandle.time}
+      {/* Compact Single-Row Header */}
+      <div className={`px-2 py-1.5 border-b flex items-center justify-between gap-2 ${isDark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
+        {/* Left: Symbol + Price + Timeframes */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{symbol}</span>
+          {latestCandle && (
+            <span className={`text-sm font-bold ${isUp ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {latestCandle.close.toLocaleString()}
+              <span className="text-xs ml-1">
+                {isUp ? '+' : ''}{priceChangePercent.toFixed(2)}%
               </span>
-              <span>O: <span className={isDark ? 'text-white' : 'text-slate-900'}>{hoveredCandle.open.toLocaleString()}</span></span>
-              <span>H: <span className="text-emerald-500">{hoveredCandle.high.toLocaleString()}</span></span>
-              <span>L: <span className="text-rose-500">{hoveredCandle.low.toLocaleString()}</span></span>
-              <span>C: <span className={hoveredCandle.close >= hoveredCandle.open ? 'text-emerald-500' : 'text-rose-500'}>{hoveredCandle.close.toLocaleString()}</span></span>
-              <span>Vol: <span className={isDark ? 'text-white' : 'text-slate-900'}>{formatVolume(hoveredCandle.volume)}</span></span>
-            </div>
+            </span>
           )}
-
-          
-          {/* Toolbar */}
-          <div className="flex items-center gap-2">
-            {/* Indicator Menu */}
-            <div className="relative">
+          <div className="hidden md:flex items-center gap-0.5 ml-1">
+            {timeframes.map(tf => (
               <button
-                onClick={() => setShowIndicatorMenu(!showIndicatorMenu)}
-                className={`p-2 rounded-lg flex items-center gap-1 text-xs font-medium transition-colors ${
-                  isDark 
-                    ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' 
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                key={tf.id}
+                onClick={() => onTimeframeChange?.(tf.id)}
+                className={`px-1.5 py-0.5 text-[10px] font-medium rounded transition-all ${
+                  currentTimeframe === tf.id
+                    ? 'bg-indigo-600 text-white'
+                    : isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-200'
                 }`}
               >
-                <Layers size={14} />
-                Indicators
-                <ChevronDown size={12} />
+                {tf.label}
               </button>
-              
-              {showIndicatorMenu && (
-                <div className={`absolute right-0 top-full mt-1 w-52 rounded-lg border shadow-xl z-50 max-h-80 overflow-y-auto scrollbar-thin ${
-                  isDark ? 'bg-slate-800 border-slate-700 scrollbar-thumb-slate-600 scrollbar-track-slate-800' : 'bg-white border-slate-200 scrollbar-thumb-slate-300 scrollbar-track-slate-100'
-                }`}>
-                  <div className="p-2 space-y-1">
-                    <div className={`text-xs font-bold uppercase px-2 py-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Moving Averages
-                    </div>
-                    {[
-                      { key: 'ma5', label: 'MA 5', color: colors.ma5 },
-                      { key: 'ma10', label: 'MA 10', color: colors.ma10 },
-                      { key: 'ma20', label: 'MA 20', color: colors.ma20 },
-                      { key: 'ma50', label: 'MA 50', color: colors.ma50 }
-                    ].map(({ key, label, color }) => (
-                      <button
-                        key={key}
-                        onClick={() => setActiveIndicators(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
-                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                          isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="w-3 h-0.5 rounded" style={{ backgroundColor: color }} />
-                          <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{label}</span>
-                        </span>
-                        {activeIndicators[key as keyof typeof activeIndicators] && (
-                          <span className="text-emerald-500">✓</span>
-                        )}
-                      </button>
-                    ))}
-                    
-                    <div className={`text-xs font-bold uppercase px-2 py-1 mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Overlays
-                    </div>
-                    <button
-                      onClick={() => setActiveIndicators(prev => ({ ...prev, bollinger: !prev.bollinger }))}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                        isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Bollinger Bands</span>
-                      {activeIndicators.bollinger && <span className="text-emerald-500">✓</span>}
-                    </button>
-                    <button
-                      onClick={() => setActiveIndicators(prev => ({ ...prev, ichimoku: !prev.ichimoku }))}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                        isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Ichimoku Cloud</span>
-                        <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-500">PRO</span>
-                      </span>
-                      {activeIndicators.ichimoku && <span className="text-emerald-500">✓</span>}
-                    </button>
-
-                    
-                    <div className={`text-xs font-bold uppercase px-2 py-1 mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Oscillators
-                    </div>
-                    <button
-                      onClick={() => setActiveIndicators(prev => ({ ...prev, rsi: !prev.rsi, macd: false }))}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                        isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>RSI (14)</span>
-                      {activeIndicators.rsi && <span className="text-emerald-500">✓</span>}
-                    </button>
-                    <button
-                      onClick={() => setActiveIndicators(prev => ({ ...prev, macd: !prev.macd, rsi: false }))}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                        isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>MACD</span>
-                      {activeIndicators.macd && <span className="text-emerald-500">✓</span>}
-                    </button>
-                    
-                    <div className={`text-xs font-bold uppercase px-2 py-1 mt-2 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      Other
-                    </div>
-                    <button
-                      onClick={() => setActiveIndicators(prev => ({ ...prev, volume: !prev.volume }))}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm ${
-                        isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Volume</span>
-                      {activeIndicators.volume && <span className="text-emerald-500">✓</span>}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Zoom controls */}
-            <button
-              onClick={() => setZoom(prev => Math.min(15, prev * 1.3))}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-              }`}
-              title="Zoom In (hoặc scroll lên)"
-            >
-              <ZoomIn size={14} />
-            </button>
-            <button
-              onClick={() => setZoom(prev => Math.max(1, prev / 1.3))}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-              }`}
-              title="Zoom Out (hoặc scroll xuống)"
-            >
-              <ZoomOut size={14} />
-            </button>
-            
-            {/* Zoom Level Indicator */}
-            {zoom > 1 && (
-              <span className={`px-2 py-1 text-xs font-medium rounded ${
-                isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'
-              }`}>
-                {zoom.toFixed(1)}x
-              </span>
-            )}
-            
-            <button
-              onClick={() => { setZoom(1); setPan(0); }}
-              className={`p-2 rounded-lg transition-colors ${
-                isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-              }`}
-              title="Reset Zoom"
-            >
-              <RefreshCw size={14} />
-            </button>
+            ))}
           </div>
+        </div>
+
+        {/* Center: OHLCV (hidden on small screens) */}
+        {hoveredCandle && (
+          <div className={`hidden lg:flex items-center gap-2 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            <span className={`px-1.5 py-0.5 rounded ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>📅 {hoveredCandle.time}</span>
+            <span>O:<span className={isDark ? 'text-white' : 'text-slate-900'}>{hoveredCandle.open.toLocaleString()}</span></span>
+            <span>H:<span className="text-emerald-500">{hoveredCandle.high.toLocaleString()}</span></span>
+            <span>L:<span className="text-rose-500">{hoveredCandle.low.toLocaleString()}</span></span>
+            <span>C:<span className={hoveredCandle.close >= hoveredCandle.open ? 'text-emerald-500' : 'text-rose-500'}>{hoveredCandle.close.toLocaleString()}</span></span>
+          </div>
+        )}
+
+        {/* Right: Tools */}
+        <div className="flex items-center gap-1">
+          {/* Drawing Tools Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDrawingTools(!showDrawingTools)}
+              className={`p-1.5 rounded flex items-center gap-0.5 text-[10px] font-medium transition-colors ${
+                activeTool !== 'none' ? 'bg-indigo-600 text-white' : isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+              }`}
+            >
+              <PenLine size={12} />
+              <ChevronDown size={10} />
+            </button>
+            {showDrawingTools && (
+              <div className={`absolute left-0 top-full mt-1 w-40 rounded-lg border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <div className="p-1.5 space-y-0.5">
+                  {drawingTools.map(tool => (
+                    <button
+                      key={tool.id}
+                      onClick={() => { setActiveTool(activeTool === tool.id ? 'none' : tool.id); setShowDrawingTools(false); }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${activeTool === tool.id ? 'bg-indigo-600 text-white' : isDark ? 'hover:bg-slate-700 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}
+                    >
+                      <tool.icon size={14} />
+                      {tool.label}
+                    </button>
+                  ))}
+                  {drawings.length > 0 && (
+                    <>
+                      <div className={`border-t my-1 ${isDark ? 'border-slate-700' : 'border-slate-200'}`}></div>
+                      <button onClick={() => { clearDrawings(); setShowDrawingTools(false); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-rose-500 ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                        <Trash2 size={14} />Xóa ({drawings.length})
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Crosshair */}
+          <button onClick={toggleStickyCrosshair} className={`p-1.5 rounded transition-colors ${crosshair.sticky ? 'bg-indigo-600 text-white' : isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Crosshair">
+            <Crosshair size={12} />
+          </button>
+
+          {/* Peaks/Troughs */}
+          <button onClick={() => setShowPeaksTroughs(!showPeaksTroughs)} className={`p-1.5 rounded transition-colors ${showPeaksTroughs ? isDark ? 'bg-amber-600/20 text-amber-400' : 'bg-amber-100 text-amber-600' : isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Đỉnh/Đáy">
+            {showPeaksTroughs ? <Eye size={12} /> : <EyeOff size={12} />}
+          </button>
+
+          {/* Indicators Dropdown */}
+          <div className="relative">
+            <button onClick={() => setShowIndicatorMenu(!showIndicatorMenu)} className={`p-1.5 rounded flex items-center gap-0.5 text-[10px] font-medium transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>
+              <Layers size={12} />
+              <ChevronDown size={10} />
+            </button>
+            {showIndicatorMenu && (
+              <div className={`absolute right-0 top-full mt-1 w-48 rounded-lg border shadow-xl z-50 max-h-72 overflow-y-auto scrollbar-thin ${isDark ? 'bg-slate-800 border-slate-700 scrollbar-thumb-slate-600' : 'bg-white border-slate-200 scrollbar-thumb-slate-300'}`}>
+                <div className="p-1.5 space-y-0.5">
+                  <div className={`text-[10px] font-bold uppercase px-2 py-0.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Moving Averages</div>
+                  {[{ key: 'ma5', label: 'MA 5', color: colors.ma5 }, { key: 'ma10', label: 'MA 10', color: colors.ma10 }, { key: 'ma20', label: 'MA 20', color: colors.ma20 }, { key: 'ma50', label: 'MA 50', color: colors.ma50 }].map(({ key, label, color }) => (
+                    <button key={key} onClick={() => setActiveIndicators(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-0.5 rounded" style={{ backgroundColor: color }} /><span className={isDark ? 'text-slate-300' : 'text-slate-700'}>{label}</span></span>
+                      {activeIndicators[key as keyof typeof activeIndicators] && <span className="text-emerald-500 text-[10px]">✓</span>}
+                    </button>
+                  ))}
+                  <div className={`text-[10px] font-bold uppercase px-2 py-0.5 mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Overlays</div>
+                  <button onClick={() => setActiveIndicators(prev => ({ ...prev, bollinger: !prev.bollinger }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Bollinger</span>
+                    {activeIndicators.bollinger && <span className="text-emerald-500 text-[10px]">✓</span>}
+                  </button>
+                  <button onClick={() => setActiveIndicators(prev => ({ ...prev, ichimoku: !prev.ichimoku }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <span className="flex items-center gap-1"><span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Ichimoku</span><span className="text-[8px] px-1 rounded bg-amber-500/20 text-amber-500">PRO</span></span>
+                    {activeIndicators.ichimoku && <span className="text-emerald-500 text-[10px]">✓</span>}
+                  </button>
+                  <div className={`text-[10px] font-bold uppercase px-2 py-0.5 mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Oscillators</div>
+                  <button onClick={() => setActiveIndicators(prev => ({ ...prev, rsi: !prev.rsi, macd: false }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>RSI (14)</span>
+                    {activeIndicators.rsi && <span className="text-emerald-500 text-[10px]">✓</span>}
+                  </button>
+                  <button onClick={() => setActiveIndicators(prev => ({ ...prev, macd: !prev.macd, rsi: false }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>MACD</span>
+                    {activeIndicators.macd && <span className="text-emerald-500 text-[10px]">✓</span>}
+                  </button>
+                  <div className={`text-[10px] font-bold uppercase px-2 py-0.5 mt-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Other</div>
+                  <button onClick={() => setActiveIndicators(prev => ({ ...prev, volume: !prev.volume }))} className={`w-full flex items-center justify-between px-2 py-1 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>Volume</span>
+                    {activeIndicators.volume && <span className="text-emerald-500 text-[10px]">✓</span>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Zoom */}
+          <button onClick={() => setZoom(prev => Math.min(15, prev * 1.3))} className={`p-1.5 rounded transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Zoom In">
+            <ZoomIn size={12} />
+          </button>
+          <button onClick={() => setZoom(prev => Math.max(1, prev / 1.3))} className={`p-1.5 rounded transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Zoom Out">
+            <ZoomOut size={12} />
+          </button>
+          {zoom > 1 && <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>{zoom.toFixed(1)}x</span>}
+          <button onClick={() => { setZoom(1); setPan(0); }} className={`p-1.5 rounded transition-colors ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Reset">
+            <RefreshCw size={12} />
+          </button>
         </div>
       </div>
 

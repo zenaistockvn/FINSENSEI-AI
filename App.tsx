@@ -1,17 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
-import MarketPulse from './components/MarketPulse';
-import StockHealth from './components/StockHealth';
-import SmartRankings from './components/SmartRankings';
-import ChatWidget from './components/ChatWidget';
-import AIScreener from './components/AIScreener';
-import StockAnalysis from './components/StockAnalysis';
-import GuruPortfolios from './components/GuruPortfolios';
-import SenAssistant from './components/SenAssistant';
-import UserProfile from './components/UserProfile';
 import { StockData, NewsItem, User, PlanType } from './types';
 import { getTopMovers, getVN100Companies, Company } from './services/supabaseClient';
+
+// Lazy load heavy components for better performance
+const MarketPulse = lazy(() => import('./components/MarketPulse'));
+const StockHealth = lazy(() => import('./components/StockHealth'));
+const SmartRankings = lazy(() => import('./components/SmartRankings'));
+const ChatWidget = lazy(() => import('./components/ChatWidget'));
+const AIScreener = lazy(() => import('./components/AIScreener'));
+const StockAnalysis = lazy(() => import('./components/StockAnalysis'));
+const GuruPortfolios = lazy(() => import('./components/GuruPortfolios'));
+const SenAssistant = lazy(() => import('./components/SenAssistant'));
+const UserProfile = lazy(() => import('./components/UserProfile'));
+
+// Loading fallback component
+const LoadingFallback: React.FC<{ height?: string }> = ({ height = '200px' }) => (
+  <div 
+    className="animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl"
+    style={{ height }}
+    role="status"
+    aria-label="Đang tải..."
+  >
+    <span className="sr-only">Đang tải...</span>
+  </div>
+);
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -121,10 +135,16 @@ const App: React.FC = () => {
       case 'dashboard':
         return (
           <div className="space-y-6 animate-fade-in-up">
-            <MarketPulse />
+            <Suspense fallback={<LoadingFallback height="120px" />}>
+              <MarketPulse />
+            </Suspense>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <StockHealth stock={currentStock || undefined} news={currentNews} isDark={isDark} />
-              <SmartRankings />
+              <Suspense fallback={<LoadingFallback height="400px" />}>
+                <StockHealth stock={currentStock || undefined} news={currentNews} isDark={isDark} />
+              </Suspense>
+              <Suspense fallback={<LoadingFallback height="400px" />}>
+                <SmartRankings />
+              </Suspense>
             </div>
             <div className="glass-panel p-8 rounded-2xl flex items-center justify-center border-t border-slate-200 dark:border-white/5 opacity-60">
                 <div className="text-center">
@@ -135,20 +155,40 @@ const App: React.FC = () => {
           </div>
         );
       case 'analysis':
-        return <StockAnalysis isDark={isDark} />;
+        return (
+          <Suspense fallback={<LoadingFallback height="600px" />}>
+            <StockAnalysis isDark={isDark} />
+          </Suspense>
+        );
       case 'screener':
-        return <AIScreener isDark={isDark} />;
+        return (
+          <Suspense fallback={<LoadingFallback height="500px" />}>
+            <AIScreener isDark={isDark} />
+          </Suspense>
+        );
       case 'guru':
-        return <GuruPortfolios isDark={isDark} />;
+        return (
+          <Suspense fallback={<LoadingFallback height="500px" />}>
+            <GuruPortfolios isDark={isDark} />
+          </Suspense>
+        );
       case 'sen_assistant':
-        return <SenAssistant isDark={isDark} />;
+        return (
+          <Suspense fallback={<LoadingFallback height="100%" />}>
+            <SenAssistant isDark={isDark} />
+          </Suspense>
+        );
       case 'profile':
-        return <UserProfile user={user} onUpgrade={handleUpgrade} isDark={isDark} />;
+        return (
+          <Suspense fallback={<LoadingFallback height="400px" />}>
+            <UserProfile user={user} onUpgrade={handleUpgrade} isDark={isDark} />
+          </Suspense>
+        );
       case 'portfolio':
         return (
-          <div className="flex items-center justify-center h-full min-h-[400px]">
+          <div className="flex items-center justify-center h-full min-h-[400px]" role="status">
             <div className="text-center text-slate-500">
-              <div className="text-4xl mb-4 opacity-30">💼</div>
+              <div className="text-4xl mb-4 opacity-30" aria-hidden="true">💼</div>
               <p className="text-xl font-semibold mb-2 text-slate-700 dark:text-slate-300">Danh mục SENAI</p>
               <p>Tính năng quản lý danh mục đang được phát triển.</p>
             </div>
@@ -156,9 +196,9 @@ const App: React.FC = () => {
         );
       default:
         return (
-          <div className="flex items-center justify-center h-full min-h-[400px]">
+          <div className="flex items-center justify-center h-full min-h-[400px]" role="status">
             <div className="text-center text-slate-500">
-              <div className="text-4xl mb-4 opacity-30">🚧</div>
+              <div className="text-4xl mb-4 opacity-30" aria-hidden="true">🚧</div>
               <p className="text-xl font-semibold mb-2 text-slate-700 dark:text-slate-300">Sắp ra mắt</p>
               <p>Mô-đun {activeTab} hiện đang được phát triển.</p>
             </div>
@@ -186,6 +226,11 @@ const App: React.FC = () => {
 
   return (
     <div className={isDark ? 'dark' : ''}>
+      {/* Skip to main content link for accessibility */}
+      <a href="#main-content" className="skip-link">
+        Chuyển đến nội dung chính
+      </a>
+      
       <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#050511] text-slate-900 dark:text-slate-200 font-sans selection:bg-indigo-500/30 selection:text-indigo-800 dark:selection:text-indigo-200 transition-colors duration-300">
         <Sidebar 
           activeTab={activeTab} 
@@ -194,9 +239,10 @@ const App: React.FC = () => {
           setIsMobileOpen={setIsMobileMenuOpen}
         />
 
-        <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+        <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative" role="main" aria-label="Nội dung chính">
           {/* Background Grid Effect */}
           <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-100 transition-opacity" 
+              aria-hidden="true"
               style={{ 
                 backgroundImage: `radial-gradient(circle at 50% 50%, ${isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(148, 163, 184, 0.2)'} 1px, transparent 1px)`, 
                 backgroundSize: '40px 40px' 
@@ -204,8 +250,8 @@ const App: React.FC = () => {
           </div>
           
           {/* Ambient colored spots */}
-          <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-600/5 dark:bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-purple-600/5 dark:bg-purple-600/10 rounded-full blur-[100px] pointer-events-none"></div>
+          <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-600/5 dark:bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none" aria-hidden="true"></div>
+          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-purple-600/5 dark:bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" aria-hidden="true"></div>
 
           <TopBar 
             isDark={isDark} 
@@ -220,19 +266,23 @@ const App: React.FC = () => {
             }}
           />
 
-          {/* 
-              Main Content Container 
-              - If SenAssistant is active: Remove padding and max-width to allow full screen.
-              - Else: Keep standard dashboard padding and constraints.
-          */}
-          <div className={`flex-1 overflow-y-auto z-10 scroll-smooth ${activeTab === 'sen_assistant' ? 'p-0 overflow-hidden' : 'p-4 md:p-8'}`}>
+          {/* Main Content Container */}
+          <div 
+            className={`flex-1 overflow-y-auto z-10 scroll-smooth safe-area-inset ${activeTab === 'sen_assistant' ? 'p-0 overflow-hidden' : 'p-4 md:p-8'}`}
+            role="region"
+            aria-label={`Trang ${activeTab}`}
+          >
             <div className={`${activeTab === 'sen_assistant' ? 'h-full w-full' : 'max-w-7xl mx-auto h-full'}`}>
               {renderContent()}
             </div>
           </div>
 
           {/* Hide Floating Chat Widget if we are on the dedicated Chat Page or Profile Page */}
-          {activeTab !== 'sen_assistant' && activeTab !== 'profile' && <ChatWidget />}
+          {activeTab !== 'sen_assistant' && activeTab !== 'profile' && (
+            <Suspense fallback={null}>
+              <ChatWidget />
+            </Suspense>
+          )}
         </main>
       </div>
     </div>

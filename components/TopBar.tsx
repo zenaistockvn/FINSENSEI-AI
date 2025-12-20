@@ -83,15 +83,17 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-slate-200 dark:border-white/5 bg-white/80 dark:bg-[#0b0f19]/80 backdrop-blur-md sticky top-0 z-20 transition-colors duration-300">
+    <header className="h-16 flex items-center justify-between px-4 md:px-6 border-b border-slate-200 dark:border-white/5 bg-white/80 dark:bg-[#0b0f19]/80 backdrop-blur-md sticky top-0 z-20 transition-colors duration-300" role="banner">
       {/* Left Section */}
       <div className="flex items-center gap-3 md:gap-4">
         {/* Mobile Menu Button */}
         <button 
           onClick={onMenuClick}
-          className="md:hidden text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all active:scale-95"
+          aria-label="Mở menu"
+          aria-expanded={false}
+          className="md:hidden text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-2 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all active:scale-95 focus-visible-ring"
         >
-           <div className="space-y-1.5">
+           <div className="space-y-1.5" aria-hidden="true">
              <span className="block w-5 h-0.5 bg-current rounded-full"></span>
              <span className="block w-5 h-0.5 bg-current rounded-full"></span>
              <span className="block w-5 h-0.5 bg-current rounded-full"></span>
@@ -99,14 +101,18 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         </button>
 
         {/* Back Button - Desktop */}
-        <button className="hidden md:flex items-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all hover:bg-slate-100 dark:hover:bg-white/5 p-2 rounded-lg active:scale-95">
+        <button 
+          aria-label="Quay lại"
+          className="hidden md:flex items-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all hover:bg-slate-100 dark:hover:bg-white/5 p-2 rounded-lg active:scale-95 focus-visible-ring"
+        >
           <ChevronLeft size={20} />
         </button>
         
         {/* Search Box - Click to open modal */}
         <button 
           onClick={() => setShowSearchModal(true)}
-          className={`relative group transition-all duration-300 w-64 hover:w-72`}
+          aria-label="Tìm kiếm cổ phiếu (Ctrl+K)"
+          className={`relative group transition-all duration-300 w-64 hover:w-72 focus-visible-ring`}
         >
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <Search className="h-4 w-4 text-slate-400 dark:text-slate-500 group-hover:text-indigo-500 transition-colors" />
@@ -162,10 +168,11 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         {/* Theme Toggle with Animation */}
         <button 
           onClick={toggleTheme}
-          className="p-2.5 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-90"
-          title={isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+          aria-label={isDark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+          aria-pressed={isDark}
+          className="p-2.5 text-slate-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-90 focus-visible-ring"
         >
-          <div className="relative w-5 h-5">
+          <div className="relative w-5 h-5" aria-hidden="true">
             <Sun size={20} className={`absolute inset-0 transition-all duration-300 ${isDark ? 'opacity-100 rotate-0' : 'opacity-0 rotate-90'}`} />
             <Moon size={20} className={`absolute inset-0 transition-all duration-300 ${isDark ? 'opacity-0 -rotate-90' : 'opacity-100 rotate-0'}`} />
           </div>
@@ -175,7 +182,10 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         <div className="relative">
           <button 
             onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-2.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-90"
+            aria-label={`Thông báo${unreadCount > 0 ? ` (${unreadCount} chưa đọc)` : ''}`}
+            aria-expanded={showNotifications}
+            aria-haspopup="true"
+            className="relative p-2.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-all active:scale-90 focus-visible-ring"
           >
             <Bell size={20} />
             {unreadCount > 0 && (
@@ -188,8 +198,12 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
           {/* Notifications Dropdown */}
           {showNotifications && (
             <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)}></div>
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 overflow-hidden animate-fade-in-up">
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} aria-hidden="true"></div>
+              <div 
+                className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 overflow-hidden animate-fade-in-up"
+                role="menu"
+                aria-label="Danh sách thông báo"
+              >
                 <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                   <span className="font-bold text-slate-900 dark:text-white">Thông báo</span>
                   <button className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
@@ -230,7 +244,8 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         {/* User Profile Trigger with Enhanced Hover */}
         <button 
           onClick={onProfileClick}
-          className="flex items-center gap-2 md:gap-3 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10 active:scale-95"
+          aria-label={`Hồ sơ người dùng: ${user.name}`}
+          className="flex items-center gap-2 md:gap-3 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10 active:scale-95 focus-visible-ring"
         >
           <div className="hidden md:flex flex-col items-end mr-1">
              <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">{user.name}</span>
@@ -263,7 +278,7 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         onSelectStock={handleSelectStock}
         isDark={isDark}
       />
-    </div>
+    </header>
   );
 };
 

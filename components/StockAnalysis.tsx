@@ -862,38 +862,28 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             </button>
           </div>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 w-full lg:w-auto">
-            <div className="px-4 border-l border-slate-200 dark:border-white/10">
-              <p className="text-slate-500 text-[10px] uppercase font-bold">Vốn hóa</p>
-              <p className="text-slate-900 dark:text-white font-medium">
-                {stockInfo?.marketCap ? `${(stockInfo.marketCap / 1000000000000).toFixed(1)}T` : 'N/A'}
-              </p>
-            </div>
-            <div className="px-4 border-l border-slate-200 dark:border-white/10">
-              <p className="text-slate-500 text-[10px] uppercase font-bold">Khối lượng</p>
-              <p className="text-slate-900 dark:text-white font-medium">
-                {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(1)}M` : 'N/A'}
-              </p>
-            </div>
-            <div className="px-4 border-l border-slate-200 dark:border-white/10">
-              <p className="text-slate-500 text-[10px] uppercase font-bold">Cao nhất ({timeframe})</p>
-              <p className="text-emerald-500 font-medium">
-                {chartData.length > 0 ? Math.max(...chartData.map(d => d.high)).toLocaleString('vi-VN') : 'N/A'}
-              </p>
-            </div>
-            <div className="px-4 border-l border-slate-200 dark:border-white/10">
-              <p className="text-slate-500 text-[10px] uppercase font-bold">Thấp nhất ({timeframe})</p>
-              <p className="text-rose-500 font-medium">
-                {chartData.length > 0 ? Math.min(...chartData.map(d => d.low)).toLocaleString('vi-VN') : 'N/A'}
-              </p>
-            </div>
-            <div className="px-4 border-l border-slate-200 dark:border-white/10">
-              <p className="text-slate-500 text-[10px] uppercase font-bold">TB ({timeframe})</p>
-              <p className="text-indigo-500 font-medium">
-                {chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.close, 0) / chartData.length).toLocaleString('vi-VN') : 'N/A'}
-              </p>
-            </div>
+          {/* Quick Stats - Compact */}
+          <div className="hidden md:flex items-center gap-1 text-xs">
+            <span className="text-slate-400 dark:text-slate-500">Vốn hóa</span>
+            <span className="text-slate-900 dark:text-white font-semibold mr-3">
+              {stockInfo?.marketCap ? `${(stockInfo.marketCap / 1000000000000).toFixed(1)}T` : '-'}
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">KL</span>
+            <span className="text-slate-900 dark:text-white font-semibold mr-3">
+              {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(1)}M` : '-'}
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">H</span>
+            <span className="text-emerald-500 font-semibold mr-3">
+              {chartData.length > 0 ? Math.max(...chartData.map(d => d.high)).toLocaleString('vi-VN') : '-'}
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">L</span>
+            <span className="text-rose-500 font-semibold mr-3">
+              {chartData.length > 0 ? Math.min(...chartData.map(d => d.low)).toLocaleString('vi-VN') : '-'}
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">TB</span>
+            <span className="text-indigo-500 font-semibold">
+              {chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.close, 0) / chartData.length).toLocaleString('vi-VN') : '-'}
+            </span>
           </div>
         </div>
       </div>
@@ -989,6 +979,8 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       height={400}
                       showVolume={true}
                       showMA={true}
+                      currentTimeframe={timeframe}
+                      onTimeframeChange={(tf) => setTimeframe(tf)}
                     />
                   </div>
 

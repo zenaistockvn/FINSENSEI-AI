@@ -127,14 +127,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isMobileOpen
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar" role="navigation" aria-label="Menu chính">
           {menuItems.map((item, index) => (
             <button
               key={item.id}
               onClick={() => handleTabClick(item.id)}
               onMouseEnter={() => setHoveredItem(item.id)}
               onMouseLeave={() => setHoveredItem(null)}
-              className={`w-full flex items-center ${isCollapsed && !isMobileOpen ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-xl transition-all duration-200 text-sm font-medium group relative ${
+              aria-current={activeTab === item.id ? 'page' : undefined}
+              aria-label={`${item.label} (phím tắt ${item.shortcut})`}
+              className={`w-full flex items-center ${isCollapsed && !isMobileOpen ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-xl transition-all duration-200 text-sm font-medium group relative focus-visible-ring ${
                 activeTab === item.id
                   ? 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 dark:from-indigo-600/20 dark:to-purple-600/20 text-indigo-600 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-500/30 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
