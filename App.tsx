@@ -213,6 +213,11 @@ const App: React.FC = () => {
             user={user} 
             onProfileClick={() => setActiveTab('profile')}
             onMenuClick={() => setIsMobileMenuOpen(true)}
+            onSelectStock={(symbol) => {
+              setActiveTab('analysis');
+              // Dispatch custom event for StockAnalysis to pick up
+              window.dispatchEvent(new CustomEvent('selectStock', { detail: symbol }));
+            }}
           />
 
           {/* 

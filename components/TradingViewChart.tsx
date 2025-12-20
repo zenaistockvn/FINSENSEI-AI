@@ -219,6 +219,51 @@ const calculateIndicators = (data: CandleData[]): Indicator => {
   };
 };
 
+// Find significant peaks and troughs (đỉnh và đáy)
+interface PeakTrough {
+  index: number;
+  price: number;
+  type: 'peak' | 'trough';
+  date: string;
+}
+
+const findPeaksAndTroughs = (data: CandleData[], lookback: number = 20): PeakTrough[] => {
+  const results: PeakTrough[] = [];
+  if (data.length < lookback * 2) return results;
+  
+  for (let i = lookback; i < data.length - lookback; i++) {
+    const currentHigh = data[i].high;
+    const currentLow = data[i].low;
+    
+    // Check for peak (đỉnh)
+    let isPeak = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && data[j].high >= currentHigh) {
+        isPeak = false;
+        break;
+      }
+    }
+    
+    // Check for trough (đáy)
+    let isTrough = true;
+    for (let j = i - lookback; j <= i + lookback; j++) {
+      if (j !== i && data[j].low <= currentLow) {
+        isTrough = false;
+        break;
+      }
+    }
+    
+    if (isPeak) {
+      results.push({ index: i, price: currentHigh, type: 'peak', date: data[i].time });
+    }
+    if (isTrough) {
+      results.push({ index: i, price: currentLow, type: 'trough', date: data[i].time });
+    }
+  }
+  
+  return results;
+};
+
 
 // Main TradingView-style Chart Component
 const TradingViewChart: React.FC<ChartProps> = ({
@@ -242,7 +287,7 @@ const TradingViewChart: React.FC<ChartProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
   const [activeIndicators, setActiveIndicators] = useState({
-    ma5: false, ma10: false, ma20: true, ma50: false,
+    ma5: false, ma10: false, ma20: true, ma50: true,
     bollinger: showBollinger, rsi: showRSI, macd: showMACD, volume: showVolume,
     ichimoku: false
   });
@@ -281,6 +326,9 @@ const TradingViewChart: React.FC<ChartProps> = ({
 
   // Calculate indicators
   const indicators = useMemo(() => calculateIndicators(data), [data]);
+
+  // Find peaks and troughs (đỉnh và đáy) - lookback 20 ngày cho 1Y view
+  const peaksAndTroughs = useMemo(() => findPeaksAndTroughs(data, 20), [data]);
 
   // Layout calculations
   const layout = useMemo(() => {
@@ -370,8 +418,10 @@ const TradingViewChart: React.FC<ChartProps> = ({
     ctx.fillRect(0, 0, dimensions.width, dimensions.height);
     
     const { margin, width, chartHeight, volumeTop, volumeHeight, indicatorTop, indicatorHeight } = layout;
-    const candleWidth = Math.max(3, (width / visibleData.length) * 0.8);
-    const gap = (width - candleWidth * visibleData.length) / (visibleData.length + 1);
+    const rightPadding = 50; // Khoảng cách từ nến cuối đến lề phải
+    const effectiveWidth = width - rightPadding;
+    const candleWidth = Math.max(3, (effectiveWidth / visibleData.length) * 0.8);
+    const gap = (effectiveWidth - candleWidth * visibleData.length) / (visibleData.length + 1);
     
     // Helper functions
     const priceToY = (price: number) => margin.top + chartHeight - ((price - priceScale.min) / priceScale.range) * chartHeight;
@@ -630,6 +680,47 @@ const TradingViewChart: React.FC<ChartProps> = ({
       }
     });
 
+    // Draw peaks and troughs markers (đỉnh và đáy)
+    peaksAndTroughs.forEach(pt => {
+      const visibleIdx = pt.index - startIdx;
+      if (visibleIdx >= 0 && visibleIdx < visibleData.length) {
+        const x = indexToX(visibleIdx);
+        const y = priceToY(pt.price);
+        
+        if (pt.type === 'peak') {
+          // Draw peak marker (đỉnh) - triangle pointing down above the candle
+          ctx.fillStyle = '#f59e0b'; // Amber color
+          ctx.beginPath();
+          ctx.moveTo(x, y - 15);
+          ctx.lineTo(x - 6, y - 25);
+          ctx.lineTo(x + 6, y - 25);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Price label
+          ctx.fillStyle = '#f59e0b';
+          ctx.font = 'bold 10px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(pt.price.toLocaleString(), x, y - 28);
+        } else {
+          // Draw trough marker (đáy) - triangle pointing up below the candle
+          ctx.fillStyle = '#06b6d4'; // Cyan color
+          ctx.beginPath();
+          ctx.moveTo(x, y + 15);
+          ctx.lineTo(x - 6, y + 25);
+          ctx.lineTo(x + 6, y + 25);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Price label
+          ctx.fillStyle = '#06b6d4';
+          ctx.font = 'bold 10px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(pt.price.toLocaleString(), x, y + 38);
+        }
+      }
+    });
+
     
     // Draw volume bars
     if (activeIndicators.volume) {
@@ -839,8 +930,10 @@ const TradingViewChart: React.FC<ChartProps> = ({
     
     // Find hovered candle
     const { margin, width } = layout;
-    const candleWidth = Math.max(3, (width / visibleData.length) * 0.8);
-    const gap = (width - candleWidth * visibleData.length) / (visibleData.length + 1);
+    const rightPadding = 50;
+    const effectiveWidth = width - rightPadding;
+    const candleWidth = Math.max(3, (effectiveWidth / visibleData.length) * 0.8);
+    const gap = (effectiveWidth - candleWidth * visibleData.length) / (visibleData.length + 1);
     
     const candleIndex = Math.floor((x - margin.left - gap / 2) / (candleWidth + gap));
     if (candleIndex >= 0 && candleIndex < visibleData.length) {

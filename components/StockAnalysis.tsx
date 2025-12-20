@@ -610,6 +610,17 @@ interface StockAnalysisProps {
   isDark?: boolean;
 }
 
+// Làm tròn giá theo bước giá cổ phiếu VN
+const roundVNPrice = (price: number): number => {
+  if (price >= 10000) {
+    return Math.round(price / 100) * 100;
+  } else if (price >= 1000) {
+    return Math.round(price / 50) * 50;
+  } else {
+    return Math.round(price / 10) * 10;
+  }
+};
+
 const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [selectedSymbol, setSelectedSymbol] = useState('VNM');
   const [searchQuery, setSearchQuery] = useState('');
@@ -628,6 +639,16 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [financialRatio, setFinancialRatio] = useState<FinancialRatio | null>(null);
+
+  // Listen for stock selection from global search
+  useEffect(() => {
+    const handleSelectStock = (e: CustomEvent) => {
+      setSelectedSymbol(e.detail);
+    };
+    window.addEventListener('selectStock', handleSelectStock as EventListener);
+    return () => window.removeEventListener('selectStock', handleSelectStock as EventListener);
+  }, []);
+
   // Fetch companies list
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -1182,7 +1203,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                     <span className="text-xs font-medium text-teal-700 dark:text-teal-100">Vùng mua</span>
                   </div>
                   <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    {(Math.min(...chartData.map(d => d.low)) / 1000).toFixed(1)}k - {(stockInfo.price * 0.98 / 1000).toFixed(1)}k
+                    {roundVNPrice(Math.min(...chartData.map(d => d.low))).toLocaleString()} - {roundVNPrice(stockInfo.price * 0.98).toLocaleString()}
                   </span>
                 </div>
 
@@ -1192,7 +1213,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                     <span className="text-xs font-medium text-rose-700 dark:text-rose-100">Cắt lỗ</span>
                   </div>
                   <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    &lt; {(Math.min(...chartData.map(d => d.low)) * 0.95 / 1000).toFixed(1)}k
+                    &lt; {roundVNPrice(Math.min(...chartData.map(d => d.low)) * 0.95).toLocaleString()}
                   </span>
                 </div>
 
@@ -1202,7 +1223,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                     <span className="text-xs font-medium text-indigo-700 dark:text-indigo-100">Mục tiêu</span>
                   </div>
                   <span className="text-slate-900 dark:text-white font-bold text-sm">
-                    {(stockInfo.price * 1.1 / 1000).toFixed(1)}k - {(stockInfo.price * 1.2 / 1000).toFixed(1)}k
+                    {roundVNPrice(stockInfo.price * 1.1).toLocaleString()} - {roundVNPrice(stockInfo.price * 1.2).toLocaleString()}
                   </span>
                 </div>
               </>
