@@ -380,6 +380,14 @@ export async function getAIAnalysis(symbol: string): Promise<AIAnalysis | null> 
   return data[0] || null;
 }
 
+// Get all AI Analysis for screener
+export async function getAllAIAnalysis(): Promise<AIAnalysis[]> {
+  return fetchFromSupabase<AIAnalysis>(
+    "ai_analysis",
+    `order=analysis_date.desc`
+  );
+}
+
 // Risk Analysis
 export async function getRiskAnalysis(symbol: string): Promise<RiskAnalysis | null> {
   const data = await fetchFromSupabase<RiskAnalysis>(
@@ -501,6 +509,7 @@ export default {
   getMarketNews,
   getAllNews,
   getAIAnalysis,
+  getAllAIAnalysis,
   getRiskAnalysis,
   getTradingStrategy,
   getBrokerRecommendations,

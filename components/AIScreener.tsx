@@ -3,11 +3,12 @@ import {
   Sparkles, Filter, Activity, Zap, ArrowUpRight, ChevronDown, ChevronUp,
   TrendingUp, TrendingDown, Gauge, RefreshCw, SlidersHorizontal, X, Brain,
   LayoutGrid, Table, GitCompare, Plus, Minus, AlertTriangle, CheckCircle, Eye,
-  Clock, Target, Award, BarChart2, Star, Shield, Flame,
+  Clock, Target, Award, BarChart2, Star, Shield, Flame, MessageSquare, Wand2,
 } from 'lucide-react';
 import {
-  getVN100Companies, getAllTechnicalIndicators, Company, TechnicalIndicators,
+  getVN100Companies, getAllTechnicalIndicators, getAllAIAnalysis, Company, TechnicalIndicators, AIAnalysis,
 } from '../services/supabaseClient';
+import { parseNaturalLanguageFilter, quickSuggestions } from '../services/openaiService';
 
 interface ScreenerResult {
   ticker: string;
@@ -26,7 +27,7 @@ interface ScreenerResult {
   priceVsMa20: number;
   maCrossSignal: string;
   reason: string;
-  aiScore: number; // New AI Recommendation Score
+  aiScore: number; // SENAI Recommendation Score
 }
 
 interface FilterConfig {
@@ -34,6 +35,7 @@ interface FilterConfig {
   trendShort: string; trendMedium: string;
   aboveMa20: boolean | null; aboveMa50: boolean | null;
   goldenCross: boolean; minScore: number;
+  sectors?: string[];
 }
 
 interface SectorData {
@@ -87,55 +89,114 @@ interface SectorRotation {
   trend: 'hot' | 'warming' | 'cooling' | 'cold';
 }
 
-// Calculate AI Recommendation Score (0-100)
-const calculateAIScore = (tech: TechnicalIndicators, company: Company | undefined): number => {
+// Calculate SENAI Recommendation Score (0-100)
+// Tích hợp: Technical (30%), Momentum (20%), Trend (15%), Risk (10%), SenAI Diagnostic (25%)
+const calculateSenAIScore = (
+  tech: TechnicalIndicators, 
+  company: Company | undefined,
+  aiAnalysis: AIAnalysis | undefined
+): number => {
   let score = 0;
-  const weights = { technical: 40, momentum: 25, trend: 20, risk: 15 };
   
-  // Technical Score (40%)
-  const techScore = tech.overall_technical_score || 50;
-  score += (techScore / 100) * weights.technical;
-  
-  // Momentum Score (25%)
-  let momentumScore = 50;
-  if (tech.rs_rating >= 80) momentumScore = 90;
-  else if (tech.rs_rating >= 60) momentumScore = 70;
-  else if (tech.rs_rating >= 40) momentumScore = 50;
-  else momentumScore = 30;
-  
-  if (tech.price_change_5d > 5) momentumScore += 10;
-  else if (tech.price_change_5d > 0) momentumScore += 5;
-  else if (tech.price_change_5d < -5) momentumScore -= 10;
-  
-  score += (Math.min(100, momentumScore) / 100) * weights.momentum;
-  
-  // Trend Score (20%)
-  let trendScore = 50;
-  if (tech.trend_short === 'UP' && tech.trend_medium === 'UP') trendScore = 90;
-  else if (tech.trend_short === 'UP') trendScore = 70;
-  else if (tech.trend_short === 'DOWN' && tech.trend_medium === 'DOWN') trendScore = 20;
-  else if (tech.trend_short === 'DOWN') trendScore = 35;
-  
-  if (tech.ma_cross_signal === 'GOLDEN_CROSS') trendScore += 15;
-  else if (tech.ma_cross_signal === 'DEATH_CROSS') trendScore -= 15;
-  
-  score += (Math.min(100, Math.max(0, trendScore)) / 100) * weights.trend;
-  
-  // Risk Score (15%) - Lower RSI extremes = higher risk
-  let riskScore = 70;
-  if (tech.rsi_14 > 70) riskScore = 40; // Overbought risk
-  else if (tech.rsi_14 < 30) riskScore = 85; // Oversold opportunity
-  else if (tech.rsi_14 >= 40 && tech.rsi_14 <= 60) riskScore = 75;
-  
-  if (tech.volume_ratio > 2) riskScore += 10; // High volume = confirmation
-  
-  score += (Math.min(100, riskScore) / 100) * weights.risk;
+  // Nếu có dữ liệu Chẩn đoán SenAI, sử dụng trọng số mới
+  if (aiAnalysis && (aiAnalysis.rating || aiAnalysis.score || aiAnalysis.signal)) {
+    const weights = { technical: 30, momentum: 20, trend: 15, risk: 10, senaiDiagnostic: 25 };
+    
+    // Technical Score (30%)
+    const techScore = tech.overall_technical_score || 50;
+    score += (techScore / 100) * weights.technical;
+    
+    // Momentum Score (20%)
+    let momentumScore = 50;
+    if (tech.rs_rating >= 80) momentumScore = 90;
+    else if (tech.rs_rating >= 60) momentumScore = 70;
+    else if (tech.rs_rating >= 40) momentumScore = 50;
+    else momentumScore = 30;
+    
+    if (tech.price_change_5d > 5) momentumScore += 10;
+    else if (tech.price_change_5d > 0) momentumScore += 5;
+    else if (tech.price_change_5d < -5) momentumScore -= 10;
+    
+    score += (Math.min(100, momentumScore) / 100) * weights.momentum;
+    
+    // Trend Score (15%)
+    let trendScore = 50;
+    if (tech.trend_short === 'UP' && tech.trend_medium === 'UP') trendScore = 90;
+    else if (tech.trend_short === 'UP') trendScore = 70;
+    else if (tech.trend_short === 'DOWN' && tech.trend_medium === 'DOWN') trendScore = 20;
+    else if (tech.trend_short === 'DOWN') trendScore = 35;
+    
+    if (tech.ma_cross_signal === 'GOLDEN_CROSS') trendScore += 15;
+    else if (tech.ma_cross_signal === 'DEATH_CROSS') trendScore -= 15;
+    
+    score += (Math.min(100, Math.max(0, trendScore)) / 100) * weights.trend;
+    
+    // Risk Score (10%)
+    let riskScore = 70;
+    if (tech.rsi_14 > 70) riskScore = 40;
+    else if (tech.rsi_14 < 30) riskScore = 85;
+    else if (tech.rsi_14 >= 40 && tech.rsi_14 <= 60) riskScore = 75;
+    
+    if (tech.volume_ratio > 2) riskScore += 10;
+    
+    score += (Math.min(100, riskScore) / 100) * weights.risk;
+    
+    // SenAI Diagnostic Score (25%) - Từ bảng ai_analysis
+    const senaiRating = aiAnalysis.rating || 50;
+    const senaiScore = aiAnalysis.score || 50;
+    const senaiSignal = aiAnalysis.signal || 50;
+    const senaiDiagnostic = (senaiRating * 0.4 + senaiScore * 0.35 + senaiSignal * 0.25);
+    score += (senaiDiagnostic / 100) * weights.senaiDiagnostic;
+    
+  } else {
+    // Fallback: Không có dữ liệu Chẩn đoán SenAI, dùng công thức cũ
+    const weights = { technical: 40, momentum: 25, trend: 20, risk: 15 };
+    
+    // Technical Score (40%)
+    const techScore = tech.overall_technical_score || 50;
+    score += (techScore / 100) * weights.technical;
+    
+    // Momentum Score (25%)
+    let momentumScore = 50;
+    if (tech.rs_rating >= 80) momentumScore = 90;
+    else if (tech.rs_rating >= 60) momentumScore = 70;
+    else if (tech.rs_rating >= 40) momentumScore = 50;
+    else momentumScore = 30;
+    
+    if (tech.price_change_5d > 5) momentumScore += 10;
+    else if (tech.price_change_5d > 0) momentumScore += 5;
+    else if (tech.price_change_5d < -5) momentumScore -= 10;
+    
+    score += (Math.min(100, momentumScore) / 100) * weights.momentum;
+    
+    // Trend Score (20%)
+    let trendScore = 50;
+    if (tech.trend_short === 'UP' && tech.trend_medium === 'UP') trendScore = 90;
+    else if (tech.trend_short === 'UP') trendScore = 70;
+    else if (tech.trend_short === 'DOWN' && tech.trend_medium === 'DOWN') trendScore = 20;
+    else if (tech.trend_short === 'DOWN') trendScore = 35;
+    
+    if (tech.ma_cross_signal === 'GOLDEN_CROSS') trendScore += 15;
+    else if (tech.ma_cross_signal === 'DEATH_CROSS') trendScore -= 15;
+    
+    score += (Math.min(100, Math.max(0, trendScore)) / 100) * weights.trend;
+    
+    // Risk Score (15%)
+    let riskScore = 70;
+    if (tech.rsi_14 > 70) riskScore = 40;
+    else if (tech.rsi_14 < 30) riskScore = 85;
+    else if (tech.rsi_14 >= 40 && tech.rsi_14 <= 60) riskScore = 75;
+    
+    if (tech.volume_ratio > 2) riskScore += 10;
+    
+    score += (Math.min(100, riskScore) / 100) * weights.risk;
+  }
   
   return Math.round(score);
 };
 
-// Get AI Score color and label
-const getAIScoreInfo = (score: number) => {
+// Get SENAI Score color and label
+const getSenAIScoreInfo = (score: number) => {
   if (score >= 80) return { color: 'text-emerald-500', bg: 'bg-emerald-500/20', label: 'Mua mạnh', icon: Flame };
   if (score >= 65) return { color: 'text-cyan-500', bg: 'bg-cyan-500/20', label: 'Khuyến nghị', icon: Star };
   if (score >= 50) return { color: 'text-amber-500', bg: 'bg-amber-500/20', label: 'Theo dõi', icon: Eye };
@@ -171,6 +232,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [technicalData, setTechnicalData] = useState<TechnicalIndicators[]>([]);
+  const [aiAnalysisData, setAiAnalysisData] = useState<AIAnalysis[]>([]);
   const [filters, setFilters] = useState<FilterConfig>(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
@@ -180,16 +242,22 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
   const [compareStocks, setCompareStocks] = useState<string[]>([]);
   const [backtestPeriod, setBacktestPeriod] = useState<number>(30);
   const [backtestResults, setBacktestResults] = useState<BacktestResult[]>([]);
+  const [aiFilterExplanation, setAiFilterExplanation] = useState<string | null>(null);
+  const [aiFilterConfidence, setAiFilterConfidence] = useState<number>(0);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [companiesData, techData] = await Promise.all([
-          getVN100Companies(), getAllTechnicalIndicators(),
+        const [companiesData, techData, aiData] = await Promise.all([
+          getVN100Companies(), getAllTechnicalIndicators(), getAllAIAnalysis(),
         ]);
         setCompanies(companiesData);
         setTechnicalData(techData);
+        setAiAnalysisData(aiData);
         if (techData.length > 0 && techData[0].calculation_date) {
           setLastUpdated(techData[0].calculation_date);
         }
@@ -232,11 +300,24 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
       if (filters.aboveMa20 === false && tech.price_vs_ma20 > 0) return false;
       if (filters.goldenCross && tech.ma_cross_signal !== 'GOLDEN_CROSS') return false;
       if (tech.overall_technical_score < filters.minScore) return false;
+      
+      // Sector filter (from AI)
+      if (filters.sectors && filters.sectors.length > 0) {
+        const company = companies.find((c) => c.symbol === tech.symbol);
+        const stockSector = company?.industry || 'Khác';
+        const matchesSector = filters.sectors.some(sector => 
+          stockSector.toLowerCase().includes(sector.toLowerCase()) ||
+          sector.toLowerCase().includes(stockSector.toLowerCase())
+        );
+        if (!matchesSector) return false;
+      }
+      
       return true;
     });
     
     const results = filtered.map((tech) => {
       const company = companies.find((c) => c.symbol === tech.symbol);
+      const aiAnalysis = aiAnalysisData.find((a) => a.symbol === tech.symbol);
       return {
         ticker: tech.symbol,
         name: company?.company_name || tech.symbol,
@@ -254,7 +335,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
         priceVsMa20: tech.price_vs_ma20 || 0,
         maCrossSignal: tech.ma_cross_signal || 'NONE',
         reason: company ? generateAIReason(tech, company) : 'Đang cập nhật...',
-        aiScore: calculateAIScore(tech, company),
+        aiScore: calculateSenAIScore(tech, company, aiAnalysis),
       };
     });
     
@@ -268,7 +349,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
       }
     });
     return results;
-  }, [technicalData, companies, filters, sortBy]);
+  }, [technicalData, companies, aiAnalysisData, filters, sortBy]);
 
   const marketInsights = useMemo((): MarketInsights => {
     if (filteredResults.length === 0) {
@@ -426,12 +507,38 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
 
   const resetFilters = () => { setFilters(defaultFilters); setActivePreset(null); setQuery(''); };
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!query.trim()) return;
     setIsSearching(true);
-    const matchedPreset = Object.keys(presetFilters).find((key) => key.toLowerCase().includes(query.toLowerCase()));
-    if (matchedPreset) applyPreset(matchedPreset);
-    setTimeout(() => setIsSearching(false), 500);
+    setAiError(null);
+    setAiFilterExplanation(null);
+    
+    // First check if it matches a preset
+    const matchedPreset = Object.keys(presetFilters).find((key) => 
+      key.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    if (matchedPreset) {
+      applyPreset(matchedPreset);
+      setIsSearching(false);
+      return;
+    }
+    
+    // If not a preset, use AI to parse natural language
+    setIsAiProcessing(true);
+    try {
+      const result = await parseNaturalLanguageFilter(query);
+      setFilters(result.filters);
+      setAiFilterExplanation(result.explanation);
+      setAiFilterConfidence(result.confidence);
+      setActivePreset(null);
+    } catch (error) {
+      console.error('AI Filter error:', error);
+      setAiError(error instanceof Error ? error.message : 'Không thể xử lý yêu cầu');
+    } finally {
+      setIsAiProcessing(false);
+      setIsSearching(false);
+    }
   };
 
   const getHeatmapColor = (change: number) => {
@@ -476,9 +583,15 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               className="block w-full pl-14 pr-36 py-5 bg-white dark:bg-[#0b0f19]/80 border border-slate-200 dark:border-slate-700/50 rounded-2xl text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all shadow-lg text-lg"
               placeholder="Ví dụ: RS cao nhất, Mô hình bứt phá, Quá bán..." />
-            <button onClick={handleSearch} disabled={isSearching}
+            <button onClick={handleSearch} disabled={isSearching || isAiProcessing}
               className="absolute right-2 top-2 bottom-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white px-6 rounded-xl font-medium transition-all shadow-lg flex items-center gap-2 disabled:opacity-70">
-              {isSearching ? <><RefreshCw size={16} className="animate-spin" /><span>Đang lọc...</span></> : <><span>Lọc ngay</span><ArrowUpRight size={18} /></>}
+              {isAiProcessing ? (
+                <><Brain size={16} className="animate-pulse" /><span>AI đang xử lý...</span></>
+              ) : isSearching ? (
+                <><RefreshCw size={16} className="animate-spin" /><span>Đang lọc...</span></>
+              ) : (
+                <><Wand2 size={16} /><span>Lọc AI</span></>
+              )}
             </button>
           </div>
 
@@ -499,8 +612,67 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
               </button>
             ))}
           </div>
+
+          {/* AI Natural Language Suggestions */}
+          <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700/50">
+            <div className="flex items-center gap-2 mb-3">
+              <Wand2 size={14} className="text-violet-500" />
+              <span className="text-xs text-slate-500">Hoặc hỏi AI bằng ngôn ngữ tự nhiên:</span>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {quickSuggestions.map((suggestion, idx) => (
+                <button key={idx} onClick={() => { setQuery(suggestion.text); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/20 text-violet-600 dark:text-violet-400 transition-all hover:scale-105">
+                  <span>{suggestion.icon}</span>
+                  <span>{suggestion.text}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* AI Filter Result Banner */}
+      {aiFilterExplanation && (
+        <div className="glass-panel p-4 rounded-xl border border-violet-500/30 bg-gradient-to-r from-violet-500/10 to-indigo-500/10">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-violet-500/20 rounded-lg">
+              <Wand2 className="text-violet-500" size={18} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-900 dark:text-white">AI đã hiểu yêu cầu của bạn</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                  aiFilterConfidence >= 0.8 ? 'bg-emerald-500/20 text-emerald-500' :
+                  aiFilterConfidence >= 0.6 ? 'bg-amber-500/20 text-amber-500' : 'bg-rose-500/20 text-rose-500'
+                }`}>
+                  {(aiFilterConfidence * 100).toFixed(0)}% tin cậy
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{aiFilterExplanation}</p>
+            </div>
+            <button onClick={() => setAiFilterExplanation(null)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded">
+              <X size={16} className="text-slate-400" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* AI Error Banner */}
+      {aiError && (
+        <div className="glass-panel p-4 rounded-xl border border-rose-500/30 bg-rose-500/10">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-rose-500" size={18} />
+            <div className="flex-1">
+              <span className="text-sm font-medium text-rose-600 dark:text-rose-400">Không thể xử lý yêu cầu</span>
+              <p className="text-xs text-rose-500/80 mt-0.5">{aiError}</p>
+            </div>
+            <button onClick={() => setAiError(null)} className="p-1 hover:bg-rose-200 dark:hover:bg-rose-900/30 rounded">
+              <X size={16} className="text-rose-400" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* AI Insights Card */}
       {!loading && (
@@ -549,7 +721,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
               <p className="text-xs text-slate-500">RSI &lt; 30</p>
             </div>
             <div className="p-3 bg-white dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/50">
-              <div className="flex items-center gap-2 text-indigo-500 mb-1"><Award size={16} /><span className="text-xs font-medium">AI Score TB</span></div>
+              <div className="flex items-center gap-2 text-indigo-500 mb-1"><Award size={16} /><span className="text-xs font-medium">SENAI Score TB</span></div>
               <p className="text-2xl font-bold text-slate-900 dark:text-white">{marketInsights.avgScore.toFixed(0)}</p>
               <p className="text-xs text-slate-500">Điểm khuyến nghị</p>
             </div>
@@ -815,7 +987,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                           <span className="font-bold text-slate-700 dark:text-slate-300">{sector.avgRsRating.toFixed(0)}</span>
                         </div>
                         <div>
-                          <span className="text-slate-500">AI Score TB: </span>
+                          <span className="text-slate-500">SENAI Score TB: </span>
                           <span className="font-bold text-indigo-500">{sector.avgAiScore.toFixed(0)}</span>
                         </div>
                       </div>
@@ -830,7 +1002,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                           } ${stock.change >= 0 ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/20 text-rose-600 dark:text-rose-400'}`}>
                           <div>{stock.ticker}</div>
                           <div className="text-[10px] opacity-80">{stock.change >= 0 ? '+' : ''}{stock.change.toFixed(1)}%</div>
-                          <div className="text-[10px] text-indigo-500">AI:{stock.aiScore}</div>
+                          <div className="text-[10px] text-indigo-500">SEN:{stock.aiScore}</div>
                         </button>
                       ))}
                     </div>
@@ -891,7 +1063,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {sector.stocks.map((stock) => {
-                    const scoreInfo = getAIScoreInfo(stock.aiScore);
+                    const scoreInfo = getSenAIScoreInfo(stock.aiScore);
                     return (
                       <button key={stock.ticker} onClick={() => toggleCompareStock(stock.ticker)}
                         className={`relative group px-3 py-2 rounded-lg text-xs font-bold text-white transition-all hover:scale-105 hover:z-10 ${getHeatmapColor(stock.change1d)} ${
@@ -900,7 +1072,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                         {stock.ticker}
                         <span className="block text-[10px] opacity-80">{stock.change1d >= 0 ? '+' : ''}{stock.change1d.toFixed(1)}%</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20 shadow-xl">
-                          <div className="font-bold">{stock.ticker} <span className={`${scoreInfo.color}`}>AI: {stock.aiScore}</span></div>
+                          <div className="font-bold">{stock.ticker} <span className={`${scoreInfo.color}`}>SEN: {stock.aiScore}</span></div>
                           <div className="text-slate-300">{stock.name}</div>
                           <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
                             <span>Giá:</span><span>{stock.price.toLocaleString()}</span>
@@ -954,14 +1126,14 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                   <tr className="border-b border-slate-200 dark:border-slate-700">
                     <th className="py-3 px-4 text-left text-xs font-bold text-slate-500 uppercase">Chỉ số</th>
                     {compareData.map((stock) => {
-                      const scoreInfo = getAIScoreInfo(stock.aiScore);
+                      const scoreInfo = getSenAIScoreInfo(stock.aiScore);
                       return (
                         <th key={stock.ticker} className="py-3 px-4 text-center">
                           <div className="flex flex-col items-center gap-1">
                             <span className="text-lg font-bold text-slate-900 dark:text-white">{stock.ticker}</span>
                             <span className="text-xs text-slate-500 truncate max-w-[120px]">{stock.name}</span>
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${scoreInfo.bg} ${scoreInfo.color}`}>
-                              <scoreInfo.icon size={10} /> AI: {stock.aiScore}
+                              <scoreInfo.icon size={10} /> SEN: {stock.aiScore}
                             </span>
                             <button onClick={() => toggleCompareStock(stock.ticker)} className="text-rose-500 hover:text-rose-600 text-xs flex items-center gap-1">
                               <Minus size={12} /> Xóa
@@ -974,7 +1146,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700/50">
                   {[
-                    { label: 'AI Score', key: 'aiScore', format: (v: number) => v.toFixed(0), highlight: true },
+                    { label: 'SENAI Score', key: 'aiScore', format: (v: number) => v.toFixed(0), highlight: true },
                     { label: 'Giá hiện tại', key: 'price', format: (v: number) => v.toLocaleString() },
                     { label: 'Thay đổi 1D', key: 'change1d', format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`, color: true },
                     { label: 'Thay đổi 5D', key: 'change5d', format: (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`, color: true },
@@ -1029,7 +1201,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                   <tr className="bg-slate-50 dark:bg-slate-800/30">
                     <td className="py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Khuyến nghị AI</td>
                     {compareData.map((stock) => {
-                      const scoreInfo = getAIScoreInfo(stock.aiScore);
+                      const scoreInfo = getSenAIScoreInfo(stock.aiScore);
                       return (
                         <td key={stock.ticker} className="py-3 px-4 text-center">
                           <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${scoreInfo.bg} ${scoreInfo.color}`}>
@@ -1046,10 +1218,10 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
 
           {compareData.length < 3 && (
             <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-800/30 rounded-xl">
-              <p className="text-xs text-slate-500 mb-3">Thêm nhanh cổ phiếu top AI Score:</p>
+              <p className="text-xs text-slate-500 mb-3">Thêm nhanh cổ phiếu top SENAI Score:</p>
               <div className="flex flex-wrap gap-2">
                 {filteredResults.filter((s) => !compareStocks.includes(s.ticker)).slice(0, 6).map((stock) => {
-                  const scoreInfo = getAIScoreInfo(stock.aiScore);
+                  const scoreInfo = getSenAIScoreInfo(stock.aiScore);
                   return (
                     <button key={stock.ticker} onClick={() => toggleCompareStock(stock.ticker)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-medium hover:border-indigo-500 transition-colors">
@@ -1143,7 +1315,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
               </button>
               <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}
                 className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-lg p-2">
-                <option value="aiScore">Sắp xếp: AI Score</option>
+                <option value="aiScore">Sắp xếp: SENAI Score</option>
                 <option value="score">Sắp xếp: Điểm kỹ thuật</option>
                 <option value="rs">Sắp xếp: RS Rating</option>
                 <option value="change">Sắp xếp: Thay đổi giá</option>
@@ -1158,7 +1330,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                 <tr className="border-b border-slate-200 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider bg-slate-100 dark:bg-slate-900/40">
                   <th className="py-4 pl-4 font-medium w-8"><Eye size={14} /></th>
                   <th className="py-4 pl-2 font-medium">Mã CK</th>
-                  <th className="py-4 font-medium text-center">AI Score</th>
+                  <th className="py-4 font-medium text-center">SENAI Score</th>
                   <th className="py-4 text-right font-medium">Giá</th>
                   <th className="py-4 text-right font-medium">1D %</th>
                   <th className="py-4 text-center font-medium">RS</th>
@@ -1186,7 +1358,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                   </tr>
                 ) : (
                   currentResults.map((stock) => {
-                    const scoreInfo = getAIScoreInfo(stock.aiScore);
+                    const scoreInfo = getSenAIScoreInfo(stock.aiScore);
                     return (
                       <tr key={stock.ticker} className="border-b border-slate-200 dark:border-slate-800/50 text-sm hover:bg-white dark:hover:bg-white/5 transition-colors group cursor-pointer">
                         <td className="py-4 pl-4">
@@ -1265,11 +1437,11 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
         </div>
       )}
 
-      {/* AI Score Legend */}
+      {/* SENAI Score Legend */}
       {!loading && (
         <div className="glass-panel p-4 rounded-xl">
           <div className="flex flex-wrap items-center justify-center gap-4 text-xs">
-            <span className="text-slate-500 font-medium">AI Score:</span>
+            <span className="text-slate-500 font-medium">SENAI Score:</span>
             {[
               { min: 80, label: 'Mua mạnh', icon: Flame, color: 'text-emerald-500', bg: 'bg-emerald-500/20' },
               { min: 65, label: 'Khuyến nghị', icon: Star, color: 'text-cyan-500', bg: 'bg-cyan-500/20' },
