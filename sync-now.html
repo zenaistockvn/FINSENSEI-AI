@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Dữ Liệu Ngay - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 10px;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn.sync {
+            background: linear-gradient(45deg, #10b981, #059669);
+            font-size: 18px;
+            padding: 20px 40px;
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .success { color: #10b981; font-weight: bold; }
+        .error { color: #ef4444; font-weight: bold; }
+        .warning { color: #f59e0b; font-weight: bold; }
+        .info { color: #3b82f6; }
+        .progress {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .progress-bar {
+            background: rgba(255, 255, 255, 0.2);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            background: linear-gradient(45deg, #10b981, #059669);
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .urgent {
+            background: rgba(16, 185, 129, 0.1);
+            border: 2px solid rgba(16, 185, 129, 0.3);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Sync Dữ Liệu 1 Năm - FinSensei AI</h1>
+        <p>Đồng bộ dữ liệu giá cổ phiếu 365 ngày từ SSI API</p>
+
+        <div class="urgent">
+            <h2>⚡ SYNC NGAY BÂY GIỜ</h2>
+            <p>Nhấn nút bên dưới để bắt đầu đồng bộ dữ liệu 1 năm</p>
+            <button class="btn sync" onclick="startFullSync()" id="syncBtn">
+                🔄 BẮT ĐẦU SYNC DỮ LIỆU
+            </button>
+        </div>
+
+        <div class="progress" id="progressContainer" style="display: none;">
+            <div id="progressText">Đang chuẩn bị...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="progressStats">0/0 mã cổ phiếu hoàn thành</div>
+        </div>
+
+        <div class="stats" id="statsContainer" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-value" id="totalSymbols">0</div>
+                <div class="stat-label">Tổng mã CP</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="completedSymbols">0</div>
+                <div class="stat-label">Đã hoàn thành</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Tổng bản ghi</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="timeElapsed">0s</div>
+                <div class="stat-label">Thời gian</div>
+            </div>
+        </div>
+
+        <div id="result" class="result" style="display: none;"></div>
+
+        <div style="margin-top: 30px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px;">
+            <h3>📋 Sau khi sync xong:</h3>
+            <ol>
+                <li>Mở FinSensei AI: <button class="btn" onclick="openApp()" style="padding: 5px 15px; margin: 0 5px;">Mở App</button></li>
+                <li>Chọn mã cổ phiếu (VD: VNM, VCB, FPT)</li>
+                <li>Nhấn nút "1Y" trên biểu đồ</li>
+                <li>Kiểm tra hiển thị dữ liệu 365 ngày</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+
+        const headers = {
+            "apikey": SERVICE_KEY,
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        };
+
+        // VN30 + top stocks for comprehensive coverage
+        const SYMBOLS_TO_SYNC = [
+            // VN30
+            "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",
+            "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SHB", "SSB", "SSI", "STB",
+            "TCB", "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE",
+            
+            // Additional popular stocks
+            "AAA", "ACV", "ANV", "APH", "ASM", "BFC", "BMP", "BSI", "BTP", "BWE",
+            "CII", "CMG", "CNG", "CRC", "CTD", "CTI", "DCM", "DGC", "DGW", "DHC",
+            "DIG", "DPM", "DRC", "DXG", "EIB", "EVF", "FCN", "FRT", "FTS", "GEG"
+        ];
+
+        let startTime;
+        let completedCount = 0;
+        let totalRecords = 0;
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function updateProgress(current, total, message) {
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const progressStats = document.getElementById('progressStats');
+            
+            progressContainer.style.display = 'block';
+            
+            const percentage = Math.round((current / total) * 100);
+            progressFill.style.width = `${percentage}%`;
+            progressText.textContent = message;
+            progressStats.textContent = `${current}/${total} mã cổ phiếu hoàn thành (${percentage}%)`;
+        }
+
+        function updateStats() {
+            const statsContainer = document.getElementById('statsContainer');
+            statsContainer.style.display = 'grid';
+            
+            document.getElementById('totalSymbols').textContent = SYMBOLS_TO_SYNC.length;
+            document.getElementById('completedSymbols').textContent = completedCount;
+            document.getElementById('totalRecords').textContent = totalRecords.toLocaleString('vi-VN');
+            
+            if (startTime) {
+                const elapsed = Math.round((Date.now() - startTime) / 1000);
+                document.getElementById('timeElapsed').textContent = `${elapsed}s`;
+            }
+        }
+
+        async function fetchSSIData(symbol) {
+            try {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - 365);
+                
+                const fromTimestamp = Math.floor(startDate.getTime() / 1000);
+                const toTimestamp = Math.floor(endDate.getTime() / 1000);
+                
+                const url = `https://iboard.ssi.com.vn/dchart/api/history?resolution=D&symbol=${symbol}&from=${fromTimestamp}&to=${toTimestamp}`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`SSI API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.s !== 'ok' || !data.t) {
+                    return [];
+                }
+                
+                const prices = [];
+                for (let i = 0; i < data.t.length; i++) {
+                    const tradingDate = new Date(data.t[i] * 1000).toISOString().split('T')[0];
+                    prices.push({
+                        symbol: symbol,
+                        trading_date: tradingDate,
+                        open_price: data.o[i],
+                        high_price: data.h[i],
+                        low_price: data.l[i],
+                        close_price: data.c[i],
+                        volume: data.v[i]
+                    });
+                }
+                
+                return prices;
+                
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        async function insertToSupabase(data) {
+            if (data.length === 0) return 0;
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    return data.length;
+                } else {
+                    const error = await response.text();
+                    throw new Error(`Insert error: ${error.substring(0, 100)}`);
+                }
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        async function startFullSync() {
+            const syncBtn = document.getElementById('syncBtn');
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = '<span class="loading"></span>ĐANG SYNC...';
+            
+            startTime = Date.now();
+            completedCount = 0;
+            totalRecords = 0;
+            
+            log("🚀 Bắt đầu đồng bộ dữ liệu 1 năm...", 'info');
+            log(`📊 Sẽ sync ${SYMBOLS_TO_SYNC.length} mã cổ phiếu`, 'info');
+            log("⏱️ Ước tính thời gian: 10-15 phút", 'info');
+            log("", 'info');
+            
+            for (let i = 0; i < SYMBOLS_TO_SYNC.length; i++) {
+                const symbol = SYMBOLS_TO_SYNC[i];
+                
+                updateProgress(i, SYMBOLS_TO_SYNC.length, `Đang xử lý ${symbol}...`);
+                
+                try {
+                    log(`[${i+1}/${SYMBOLS_TO_SYNC.length}] Đang lấy dữ liệu ${symbol}...`, 'info');
+                    
+                    const prices = await fetchSSIData(symbol);
+                    
+                    if (prices.length > 0) {
+                        const inserted = await insertToSupabase(prices);
+                        totalRecords += inserted;
+                        completedCount++;
+                        
+                        log(`✅ ${symbol}: ${inserted} bản ghi (${prices.length} ngày)`, 'success');
+                    } else {
+                        log(`⚠️ ${symbol}: Không có dữ liệu`, 'warning');
+                    }
+                    
+                } catch (error) {
+                    log(`❌ ${symbol}: ${error.message}`, 'error');
+                }
+                
+                updateStats();
+                
+                // Rate limiting - important!
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
+            
+            updateProgress(SYMBOLS_TO_SYNC.length, SYMBOLS_TO_SYNC.length, 'Hoàn thành!');
+            
+            const duration = Math.round((Date.now() - startTime) / 1000);
+            
+            log("", 'info');
+            log("🎉 ĐỒNG BỘ HOÀN THÀNH!", 'success');
+            log(`📊 Tổng kết:`, 'info');
+            log(`  - Đã xử lý: ${SYMBOLS_TO_SYNC.length} mã cổ phiếu`, 'info');
+            log(`  - Thành công: ${completedCount} mã`, 'success');
+            log(`  - Tổng bản ghi: ${totalRecords.toLocaleString('vi-VN')}`, 'success');
+            log(`  - Thời gian: ${Math.floor(duration/60)}m ${duration%60}s`, 'info');
+            log("", 'info');
+            log("🎯 Bây giờ bạn có thể:", 'info');
+            log("  1. Mở FinSensei AI", 'info');
+            log("  2. Chọn mã cổ phiếu", 'info');
+            log("  3. Nhấn nút '1Y' để xem biểu đồ 1 năm", 'info');
+            
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = '✅ SYNC HOÀN THÀNH';
+            syncBtn.style.background = 'linear-gradient(45deg, #10b981, #059669)';
+        }
+
+        function openApp() {
+            window.open('http://localhost:3001', '_blank');
+        }
+    </script>
+</body>
+</html>

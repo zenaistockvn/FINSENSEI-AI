@@ -1,0 +1,10 @@
+{
+  "name": "finsensei-supabase",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "setup": "node setup-database.js",
+    "sync": "node sync-vci-data.js",
+    "sync:watch": "node sync-vci-data.js && node -e \"setInterval(() => {}, 1000)\""
+  }
+}

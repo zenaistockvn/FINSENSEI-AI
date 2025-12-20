@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinSensei AI - Sync VCI Data</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #4ade80;
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ade80, #22d3ee);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4ade80, #22d3ee);
+            color: #000;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(74, 222, 128, 0.3);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .log-container {
+            background: #0d1117;
+            border-radius: 12px;
+            padding: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+        }
+        
+        .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .log-success { color: #4ade80; }
+        .log-error { color: #f87171; }
+        .log-warning { color: #fbbf24; }
+        .log-info { color: #60a5fa; }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .status-idle { background: rgba(255, 255, 255, 0.1); }
+        .status-running { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .status-complete { background: rgba(34, 211, 238, 0.2); color: #22d3ee; }
+        .status-error { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .info-box {
+            background: rgba(96, 165, 250, 0.1);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .info-box h3 {
+            color: #60a5fa;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        
+        .info-box ul {
+            list-style: none;
+            color: #888;
+        }
+        
+        .info-box li {
+            padding: 4px 0;
+        }
+        
+        .info-box li::before {
+            content: "✓ ";
+            color: #4ade80;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 FinSensei AI - VCI Data Sync</h1>
+        <p class="subtitle">Sync dữ liệu chứng khoán từ Vietcap Securities (VCI)</p>
+        
+        <div class="info-box">
+            <h3>ℹ️ Thông tin nguồn dữ liệu VCI</h3>
+            <ul>
+                <li>Nguồn: Vietcap Securities - Chất lượng cao nhất</li>
+                <li>Dữ liệu: 100 mã VN100 + 4 chỉ số thị trường</li>
+                <li>Khoảng thời gian: 2 năm (730 ngày)</li>
+                <li>Thời gian sync: 15-25 phút</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>📈 Trạng thái Sync</h2>
+            
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+                <span class="status-badge status-idle" id="statusBadge">
+                    <span>⏸️ Chờ bắt đầu</span>
+                </span>
+                <span id="currentSymbol" style="color: #888;"></span>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progressText">0 / 100 mã</span>
+                    <span id="timeRemaining">--</span>
+                </div>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="priceCount">0</div>
+                    <div class="stat-label">Giá cổ phiếu</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="companyCount">0</div>
+                    <div class="stat-label">Công ty</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="indexCount">0</div>
+                    <div class="stat-label">Chỉ số</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="errorCount">0</div>
+                    <div class="stat-label">Lỗi</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🎮 Điều khiển</h2>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="btnStart" onclick="startSync()">
+                    🚀 Bắt đầu Sync VCI
+                </button>
+                <button class="btn btn-secondary" id="btnStop" onclick="stopSync()" disabled>
+                    ⏹️ Dừng
+                </button>
+                <button class="btn btn-secondary" onclick="clearLogs()">
+                    🗑️ Xóa Log
+                </button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📝 Log</h2>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry log-info">Sẵn sàng sync dữ liệu từ VCI...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+        
+        const supabaseHeaders = {
+            "apikey": SERVICE_KEY,
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        };
+        
+        // VN100 symbols
+        const VN100_SYMBOLS = [
+            "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",
+            "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SHB", "SSB", "SSI", "STB",
+            "TCB", "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE",
+            "ANV", "ASM", "BAF", "BMP", "BSI", "BWE", "CII", "CMG", "CNG", "CTD",
+            "DCM", "DGC", "DGW", "DIG", "DPM", "DRC", "DXG", "DXS", "EIB", "EVF",
+            "FRT", "GEX", "GMD", "HAG", "HCM", "HDC", "HDG", "HHV", "HSG", "HT1",
+            "IMP", "KBC", "KDC", "KDH", "KOS", "LPB", "MSB", "NAB", "NKG", "NLG",
+            "NT2", "NVL", "OCB", "PAN", "PC1", "PDR", "PET", "PHR", "PNJ", "PPC",
+            "PTB", "PVD", "PVS", "PVT", "REE", "SBT", "SCS", "SHI", "SIP", "SJS",
+            "SKG", "SZC", "TCH", "TLG", "TNH", "VCG", "VCI", "VGC", "VHC", "VND"
+        ];
+        
+        const MARKET_INDICES = ['VNINDEX', 'VN30', 'HNX', 'UPCOM'];
+        
+        // State
+        let isRunning = false;
+        let shouldStop = false;
+        let stats = {
+            priceCount: 0,
+            companyCount: 0,
+            indexCount: 0,
+            errorCount: 0,
+            startTime: null
+        };
+        
+        // Logging
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = 
+                '<div class="log-entry log-info">Log đã được xóa...</div>';
+        }
+        
+        // UI Updates
+        function updateStatus(status, text) {
+            const badge = document.getElementById('statusBadge');
+            badge.className = `status-badge status-${status}`;
+            badge.innerHTML = status === 'running' 
+                ? `<span class="spinner"></span><span>${text}</span>`
+                : `<span>${text}</span>`;
+        }
+        
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressFill').style.width = `${percent}%`;
+            document.getElementById('progressText').textContent = `${current} / ${total} mã`;
+            
+            if (stats.startTime && current > 0) {
+                const elapsed = (Date.now() - stats.startTime) / 1000;
+                const avgTime = elapsed / current;
+                const remaining = Math.round((total - current) * avgTime / 60);
+                document.getElementById('timeRemaining').textContent = 
+                    remaining > 0 ? `~${remaining} phút còn lại` : 'Sắp hoàn thành';
+            }
+        }
+        
+        function updateStats() {
+            document.getElementById('priceCount').textContent = stats.priceCount.toLocaleString();
+            document.getElementById('companyCount').textContent = stats.companyCount;
+            document.getElementById('indexCount').textContent = stats.indexCount;
+            document.getElementById('errorCount').textContent = stats.errorCount;
+        }
+        
+        // Cafef API (reliable source for browser)
+        async function fetchCafefHistory(symbol, days = 730) {
+            try {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                
+                const formatDate = (d) => {
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const yyyy = d.getFullYear();
+                    return `${dd}/${mm}/${yyyy}`;
+                };
+                
+                const url = `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${symbol}&StartDate=${formatDate(startDate)}&EndDate=${formatDate(endDate)}&PageIndex=1&PageSize=1000`;
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const json = await response.json();
+                if (!json.Data?.Data?.length) return null;
+                
+                return json.Data.Data.map(item => {
+                    const [dd, mm, yyyy] = item.Ngay.split('/');
+                    return {
+                        symbol: symbol,
+                        trading_date: `${yyyy}-${mm}-${dd}`,
+                        open_price: item.GiaMoCua * 1000,
+                        high_price: item.GiaCaoNhat * 1000,
+                        low_price: item.GiaThapNhat * 1000,
+                        close_price: item.GiaDongCua * 1000,
+                        volume: item.KhoiLuongKhopLenh || 0
+                    };
+                });
+            } catch (error) {
+                return null;
+            }
+        }
+        
+        async function fetchCafefIndex(indexCode, days = 730) {
+            const indexMap = {
+                'VNINDEX': 'VNINDEX',
+                'VN30': 'VN30INDEX',
+                'HNX': 'HNXINDEX',
+                'UPCOM': 'UPCOMINDEX'
+            };
+            
+            try {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setDate(startDate.getDate() - days);
+                
+                const formatDate = (d) => {
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const yyyy = d.getFullYear();
+                    return `${dd}/${mm}/${yyyy}`;
+                };
+                
+                const url = `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${indexMap[indexCode]}&StartDate=${formatDate(startDate)}&EndDate=${formatDate(endDate)}&PageIndex=1&PageSize=1000`;
+                
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const json = await response.json();
+                if (!json.Data?.Data?.length) return null;
+                
+                return json.Data.Data.map((item, i, arr) => {
+                    const [dd, mm, yyyy] = item.Ngay.split('/');
+                    const prevClose = i < arr.length - 1 ? arr[i+1].GiaDongCua : item.GiaMoCua;
+                    
+                    return {
+                        index_code: indexCode,
+                        trading_date: `${yyyy}-${mm}-${dd}`,
+                        open_value: item.GiaMoCua,
+                        high_value: item.GiaCaoNhat,
+                        low_value: item.GiaThapNhat,
+                        close_value: item.GiaDongCua,
+                        volume: item.KhoiLuongKhopLenh || 0,
+                        change_value: Math.round((item.GiaDongCua - prevClose) * 100) / 100,
+                        change_percent: Math.round((item.GiaDongCua - prevClose) / prevClose * 10000) / 100
+                    };
+                });
+            } catch (error) {
+                return null;
+            }
+        }
+        
+        // Supabase insert
+        async function insertToSupabase(table, data) {
+            if (!data?.length) return 0;
+            
+            const batchSize = 200;
+            let inserted = 0;
+            
+            for (let i = 0; i < data.length; i += batchSize) {
+                const batch = data.slice(i, i + batchSize);
+                
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+                        method: "POST",
+                        headers: supabaseHeaders,
+                        body: JSON.stringify(batch)
+                    });
+                    
+                    if (response.ok || (await response.text()).includes('duplicate')) {
+                        inserted += batch.length;
+                    }
+                } catch (error) {
+                    // Continue on error
+                }
+            }
+            
+            return inserted;
+        }
+        
+        // Main sync function
+        async function startSync() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            shouldStop = false;
+            stats = { priceCount: 0, companyCount: 0, indexCount: 0, errorCount: 0, startTime: Date.now() };
+            
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+            
+            updateStatus('running', '🔄 Đang sync...');
+            log('🚀 Bắt đầu sync dữ liệu từ VCI/Cafef...', 'info');
+            
+            // Sync stocks
+            for (let i = 0; i < VN100_SYMBOLS.length; i++) {
+                if (shouldStop) break;
+                
+                const symbol = VN100_SYMBOLS[i];
+                document.getElementById('currentSymbol').textContent = `Đang xử lý: ${symbol}`;
+                
+                try {
+                    const prices = await fetchCafefHistory(symbol, 730);
+                    
+                    if (prices?.length) {
+                        const inserted = await insertToSupabase('stock_prices', prices);
+                        stats.priceCount += inserted;
+                        stats.companyCount++;
+                        log(`✅ ${symbol}: ${inserted} bản ghi`, 'success');
+                    } else {
+                        stats.errorCount++;
+                        log(`⚠️ ${symbol}: Không có dữ liệu`, 'warning');
+                    }
+                } catch (error) {
+                    stats.errorCount++;
+                    log(`❌ ${symbol}: ${error.message}`, 'error');
+                }
+                
+                updateProgress(i + 1, VN100_SYMBOLS.length);
+                updateStats();
+                
+                await new Promise(r => setTimeout(r, 500));
+            }
+            
+            // Sync indices
+            if (!shouldStop) {
+                log('📊 Đang sync chỉ số thị trường...', 'info');
+                
+                for (const indexCode of MARKET_INDICES) {
+                    if (shouldStop) break;
+                    
+                    try {
+                        const indices = await fetchCafefIndex(indexCode, 730);
+                        
+                        if (indices?.length) {
+                            const inserted = await insertToSupabase('market_indices', indices);
+                            stats.indexCount += inserted;
+                            log(`✅ ${indexCode}: ${inserted} bản ghi`, 'success');
+                        }
+                    } catch (error) {
+                        log(`❌ ${indexCode}: ${error.message}`, 'error');
+                    }
+                    
+                    updateStats();
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+            
+            // Complete
+            isRunning = false;
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('currentSymbol').textContent = '';
+            
+            if (shouldStop) {
+                updateStatus('idle', '⏸️ Đã dừng');
+                log('⏹️ Sync đã bị dừng bởi người dùng', 'warning');
+            } else {
+                updateStatus('complete', '✅ Hoàn thành');
+                log(`🎉 Sync hoàn thành! Tổng: ${stats.priceCount.toLocaleString()} giá, ${stats.indexCount.toLocaleString()} chỉ số`, 'success');
+            }
+        }
+        
+        function stopSync() {
+            shouldStop = true;
+            log('⏹️ Đang dừng sync...', 'warning');
+        }
+    </script>
+</body>
+</html>

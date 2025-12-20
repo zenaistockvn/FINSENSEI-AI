@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm tra dữ liệu - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #3b82f6; }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .status-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #10b981;
+        }
+        .instructions {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Kiểm tra dữ liệu FinSensei AI</h1>
+        <p>Kiểm tra tình trạng dữ liệu 1 năm cho chức năng phân tích cổ phiếu</p>
+
+        <div class="status-card">
+            <h3>🔍 Trạng thái dữ liệu</h3>
+            <button class="btn" onclick="checkData()">Kiểm tra ngay</button>
+            <button class="btn" onclick="testTimeframes()">Test khung thời gian</button>
+            <div id="result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="instructions">
+            <h3>📋 Hướng dẫn đồng bộ dữ liệu</h3>
+            <p><strong>Nếu chưa có đủ dữ liệu 1 năm, hãy làm theo các bước sau:</strong></p>
+            
+            <h4>🐍 Cách 1: Sử dụng Python (Khuyến nghị)</h4>
+            <ol>
+                <li>Cài đặt Python từ <a href="https://www.python.org/downloads/" target="_blank" style="color: #60a5fa;">python.org</a></li>
+                <li>Mở Command Prompt hoặc PowerShell</li>
+                <li>Chạy lệnh: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">pip install requests</code></li>
+                <li>Chạy script: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">python supabase/sync_1year_data.py</code></li>
+            </ol>
+
+            <h4>🟢 Cách 2: Sử dụng Node.js</h4>
+            <ol>
+                <li>Cài đặt Node.js từ <a href="https://nodejs.org/" target="_blank" style="color: #60a5fa;">nodejs.org</a></li>
+                <li>Mở Command Prompt hoặc PowerShell</li>
+                <li>Chạy script: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">node supabase/sync-1year-data.js</code></li>
+            </ol>
+
+            <h4>⚡ Cách 3: PowerShell (Windows)</h4>
+            <ol>
+                <li>Mở PowerShell as Administrator</li>
+                <li>Chạy: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">Set-ExecutionPolicy RemoteSigned</code></li>
+                <li>Chạy: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px;">.\supabase\quick-sync.ps1</code></li>
+            </ol>
+        </div>
+
+        <div class="status-card">
+            <h3>🎯 Test ứng dụng</h3>
+            <p>Sau khi đồng bộ dữ liệu, test chức năng 1Y:</p>
+            <button class="btn" onclick="openApp()">Mở FinSensei AI</button>
+            <ul style="margin-top: 15px; font-size: 14px;">
+                <li>Chọn mã cổ phiếu (VD: VNM, VCB, FPT)</li>
+                <li>Chọn khung thời gian "1Y" trên biểu đồ</li>
+                <li>Kiểm tra hiển thị dữ liệu 365 ngày</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        const headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json"
+        };
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        async function fetchFromSupabase(endpoint, params = "") {
+            const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+            const response = await fetch(url, { headers });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            return await response.json();
+        }
+
+        async function checkData() {
+            clearLog();
+            log("🔍 Đang kiểm tra dữ liệu...", 'info');
+            
+            try {
+                // Check recent data
+                const recent = await fetchFromSupabase("stock_prices", "order=trading_date.desc&limit=10");
+                log(`✅ Tìm thấy ${recent.length} bản ghi gần nhất`, 'success');
+                
+                if (recent.length > 0) {
+                    log(`📅 Ngày mới nhất: ${recent[0].trading_date}`, 'info');
+                    
+                    // Check data range for a specific symbol
+                    const vnmData = await fetchFromSupabase("stock_prices", "symbol=eq.VNM&order=trading_date.desc&limit=365");
+                    log(`📊 VNM có ${vnmData.length} ngày dữ liệu`, vnmData.length >= 250 ? 'success' : 'warning');
+                    
+                    if (vnmData.length > 0) {
+                        const oldestDate = vnmData[vnmData.length - 1].trading_date;
+                        const newestDate = vnmData[0].trading_date;
+                        log(`📈 Khoảng dữ liệu VNM: ${oldestDate} → ${newestDate}`, 'info');
+                        
+                        // Calculate days
+                        const daysDiff = Math.floor((new Date(newestDate) - new Date(oldestDate)) / (1000 * 60 * 60 * 24));
+                        log(`⏱️ Khoảng cách: ${daysDiff} ngày`, daysDiff >= 300 ? 'success' : 'warning');
+                        
+                        if (daysDiff >= 300) {
+                            log("🎉 Dữ liệu đủ cho chức năng 1Y!", 'success');
+                        } else {
+                            log("⚠️ Cần đồng bộ thêm dữ liệu cho 1Y", 'warning');
+                        }
+                    }
+                } else {
+                    log("❌ Chưa có dữ liệu. Cần chạy script đồng bộ.", 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function testTimeframes() {
+            log("\n⏰ Test khung thời gian...", 'info');
+            
+            const symbol = 'VNM';
+            const timeframes = [
+                { name: '1 tuần (7 ngày)', days: 7 },
+                { name: '1 tháng (30 ngày)', days: 30 },
+                { name: '3 tháng (90 ngày)', days: 90 },
+                { name: '6 tháng (180 ngày)', days: 180 },
+                { name: '1 năm (365 ngày)', days: 365 }
+            ];
+            
+            for (const tf of timeframes) {
+                try {
+                    const data = await fetchFromSupabase("stock_prices", `symbol=eq.${symbol}&order=trading_date.desc&limit=${tf.days}`);
+                    const coverage = Math.round((data.length / tf.days) * 100);
+                    
+                    if (coverage >= 70) {
+                        log(`✅ ${tf.name}: ${data.length}/${tf.days} bản ghi (${coverage}%)`, 'success');
+                    } else if (coverage >= 30) {
+                        log(`⚠️ ${tf.name}: ${data.length}/${tf.days} bản ghi (${coverage}%)`, 'warning');
+                    } else {
+                        log(`❌ ${tf.name}: ${data.length}/${tf.days} bản ghi (${coverage}%)`, 'error');
+                    }
+                } catch (error) {
+                    log(`❌ ${tf.name}: Lỗi ${error.message}`, 'error');
+                }
+            }
+        }
+
+        function openApp() {
+            window.open('http://localhost:3001', '_blank');
+        }
+
+        // Auto check on load
+        window.addEventListener('load', () => {
+            setTimeout(checkData, 1000);
+        });
+    </script>
+</body>
+</html>

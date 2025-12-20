@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Data Sync - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #3b82f6; }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 FinSensei AI - Test Data Sync</h1>
+            <p>Kiểm tra đồng bộ dữ liệu 1 năm từ SSI API</p>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Kiểm tra dữ liệu hiện tại</h3>
+            <button class="btn" onclick="checkCurrentData()">Kiểm tra dữ liệu</button>
+            <button class="btn" onclick="testStockPrices()">Test giá cổ phiếu</button>
+            <button class="btn" onclick="testTimeframes()">Test khung thời gian</button>
+            <div id="dataResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="stats" id="statsContainer" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Tổng bản ghi</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalSymbols">0</div>
+                <div class="stat-label">Mã cổ phiếu</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="latestDate">N/A</div>
+                <div class="stat-label">Ngày gần nhất</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="oldestDate">N/A</div>
+                <div class="stat-label">Ngày xa nhất</div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 Đồng bộ dữ liệu mới</h3>
+            <p>Đồng bộ dữ liệu 1 năm cho một số mã VN30 (test)</p>
+            <button class="btn" onclick="syncTestData()" id="syncBtn">Sync dữ liệu test</button>
+            <div id="syncResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📈 Test ứng dụng</h3>
+            <p>Mở ứng dụng chính và test chức năng 1Y</p>
+            <button class="btn" onclick="openApp()">Mở FinSensei AI</button>
+            <div class="info">
+                <p><strong>Hướng dẫn test:</strong></p>
+                <ol>
+                    <li>Chọn một mã cổ phiếu (VD: VNM, VCB, FPT)</li>
+                    <li>Chọn khung thời gian "1Y" trên biểu đồ</li>
+                    <li>Kiểm tra xem có hiển thị dữ liệu 1 năm không</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        const headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json"
+        };
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('dataResult');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            const className = type;
+            result.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function clearLog() {
+            const result = document.getElementById('dataResult');
+            result.innerHTML = '';
+        }
+
+        async function fetchFromSupabase(endpoint, params = "") {
+            try {
+                const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+                const response = await fetch(url, { headers });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                throw new Error(`Lỗi kết nối: ${error.message}`);
+            }
+        }
+
+        async function checkCurrentData() {
+            clearLog();
+            log("🔍 Đang kiểm tra dữ liệu hiện tại...", 'info');
+            
+            try {
+                // Check companies
+                const companies = await fetchFromSupabase("companies", "is_vn100=eq.true&limit=5");
+                log(`✅ Tìm thấy ${companies.length} công ty VN100`, 'success');
+                
+                // Check stock prices
+                const prices = await fetchFromSupabase("stock_prices", "limit=10&order=trading_date.desc");
+                log(`✅ Tìm thấy ${prices.length} bản ghi giá gần nhất`, 'success');
+                
+                if (prices.length > 0) {
+                    log(`📅 Ngày gần nhất: ${prices[0].trading_date}`, 'info');
+                    log(`📊 Mã: ${prices[0].symbol}, Giá: ${prices[0].close_price.toLocaleString('vi-VN')} VND`, 'info');
+                }
+                
+                // Get total count
+                const totalPrices = await fetchFromSupabase("stock_prices", "select=count");
+                log(`📈 Tổng số bản ghi giá: ${totalPrices.length > 0 ? 'Có dữ liệu' : 'Chưa có dữ liệu'}`, 'info');
+                
+                // Update stats
+                updateStats(prices);
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStockPrices() {
+            log("\n🧪 Test lấy dữ liệu giá cổ phiếu...", 'info');
+            
+            const testSymbols = ['VNM', 'VCB', 'FPT', 'HPG', 'VIC'];
+            
+            for (const symbol of testSymbols) {
+                try {
+                    const prices = await fetchFromSupabase("stock_prices", `symbol=eq.${symbol}&order=trading_date.desc&limit=5`);
+                    if (prices.length > 0) {
+                        log(`✅ ${symbol}: ${prices.length} bản ghi, mới nhất ${prices[0].trading_date}`, 'success');
+                    } else {
+                        log(`⚠️ ${symbol}: Không có dữ liệu`, 'warning');
+                    }
+                } catch (error) {
+                    log(`❌ ${symbol}: Lỗi ${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function testTimeframes() {
+            log("\n⏰ Test khung thời gian khác nhau...", 'info');
+            
+            const symbol = 'VNM';
+            const timeframes = [
+                { name: '1 tuần', days: 7 },
+                { name: '1 tháng', days: 30 },
+                { name: '3 tháng', days: 90 },
+                { name: '6 tháng', days: 180 },
+                { name: '1 năm', days: 365 }
+            ];
+            
+            for (const tf of timeframes) {
+                try {
+                    const prices = await fetchFromSupabase("stock_prices", `symbol=eq.${symbol}&order=trading_date.desc&limit=${tf.days}`);
+                    log(`📊 ${tf.name}: ${prices.length}/${tf.days} bản ghi`, prices.length >= tf.days * 0.7 ? 'success' : 'warning');
+                } catch (error) {
+                    log(`❌ ${tf.name}: Lỗi ${error.message}`, 'error');
+                }
+            }
+        }
+
+        function updateStats(prices) {
+            if (prices.length === 0) return;
+            
+            document.getElementById('statsContainer').style.display = 'grid';
+            document.getElementById('totalRecords').textContent = prices.length + '+';
+            
+            const symbols = [...new Set(prices.map(p => p.symbol))];
+            document.getElementById('totalSymbols').textContent = symbols.length;
+            document.getElementById('latestDate').textContent = prices[0].trading_date;
+            document.getElementById('oldestDate').textContent = prices[prices.length - 1].trading_date;
+        }
+
+        async function syncTestData() {
+            const btn = document.getElementById('syncBtn');
+            const result = document.getElementById('syncResult');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Đang sync...';
+            result.style.display = 'block';
+            result.innerHTML = '';
+            
+            function logSync(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString('vi-VN');
+                result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+                result.scrollTop = result.scrollHeight;
+            }
+            
+            logSync("🚀 Bắt đầu đồng bộ dữ liệu test...", 'info');
+            logSync("⚠️ Chức năng này cần được thực hiện từ server", 'warning');
+            logSync("💡 Để sync dữ liệu thực tế, hãy chạy:", 'info');
+            logSync("   python supabase/sync_1year_data.py", 'info');
+            logSync("   hoặc node supabase/sync-1year-data.js", 'info');
+            
+            // Simulate sync process
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            logSync("✅ Demo hoàn thành", 'success');
+            logSync("🎯 Hãy chạy script thực tế để có dữ liệu 1 năm", 'info');
+            
+            btn.disabled = false;
+            btn.innerHTML = 'Sync dữ liệu test';
+        }
+
+        function openApp() {
+            window.open('http://localhost:3001', '_blank');
+        }
+
+        // Auto check data on load
+        window.addEventListener('load', () => {
+            setTimeout(checkCurrentData, 1000);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm tra dữ liệu nhanh - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn {
+            background: linear-gradient(45deg, #4f46e5, #7c3aed);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .btn.sync {
+            background: linear-gradient(45deg, #10b981, #059669);
+        }
+        .result {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #3b82f6; }
+        .urgent { 
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Kiểm tra dữ liệu nhanh</h1>
+        <p>Kiểm tra tại sao biểu đồ chỉ hiển thị đến tháng 7</p>
+
+        <div class="urgent">
+            <h3>⚠️ Vấn đề hiện tại</h3>
+            <p>Biểu đồ chỉ hiển thị đến tháng 7 → Dữ liệu chưa đủ 1 năm hoặc chưa cập nhật</p>
+        </div>
+
+        <button class="btn" onclick="diagnoseIssue()">🔍 Chẩn đoán vấn đề</button>
+        <button class="btn sync" onclick="syncRecentData()">🔄 Sync dữ liệu mới</button>
+        <button class="btn" onclick="testSpecificStock()">📊 Test mã cụ thể</button>
+
+        <div id="result" class="result" style="display: none;"></div>
+
+        <div style="margin-top: 30px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 15px;">
+            <h3>🚀 Giải pháp nhanh</h3>
+            <p><strong>Nếu cần dữ liệu ngay:</strong></p>
+            <ol>
+                <li>Cài Python: <code>python.org/downloads</code></li>
+                <li>Chạy: <code>pip install requests</code></li>
+                <li>Chạy: <code>python supabase/sync_1year_data.py</code></li>
+                <li>Đợi 10-15 phút để sync xong</li>
+                <li>Refresh ứng dụng và test lại</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+        const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+
+        const headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json"
+        };
+
+        const serviceHeaders = {
+            "apikey": SERVICE_KEY,
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        };
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        async function fetchFromSupabase(endpoint, params = "", useService = false) {
+            const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+            const response = await fetch(url, { headers: useService ? serviceHeaders : headers });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            return await response.json();
+        }
+
+        async function diagnoseIssue() {
+            clearLog();
+            log("🔍 Đang chẩn đoán vấn đề...", 'info');
+            
+            try {
+                // Check current date
+                const today = new Date().toISOString().split('T')[0];
+                log(`📅 Hôm nay: ${today}`, 'info');
+                
+                // Check latest data
+                const latest = await fetchFromSupabase("stock_prices", "order=trading_date.desc&limit=5");
+                
+                if (latest.length === 0) {
+                    log("❌ KHÔNG CÓ DỮ LIỆU trong database!", 'error');
+                    log("💡 Cần chạy script sync để có dữ liệu", 'warning');
+                    return;
+                }
+                
+                log(`📊 Ngày dữ liệu mới nhất: ${latest[0].trading_date}`, 'info');
+                
+                // Calculate days difference
+                const latestDate = new Date(latest[0].trading_date);
+                const todayDate = new Date(today);
+                const daysDiff = Math.floor((todayDate - latestDate) / (1000 * 60 * 60 * 24));
+                
+                log(`⏱️ Dữ liệu cũ ${daysDiff} ngày`, daysDiff > 30 ? 'error' : daysDiff > 7 ? 'warning' : 'success');
+                
+                // Check specific symbols
+                const testSymbols = ['VNM', 'VCB', 'FPT'];
+                for (const symbol of testSymbols) {
+                    const symbolData = await fetchFromSupabase("stock_prices", `symbol=eq.${symbol}&order=trading_date.desc&limit=365`);
+                    
+                    if (symbolData.length > 0) {
+                        const oldestDate = symbolData[symbolData.length - 1].trading_date;
+                        const newestDate = symbolData[0].trading_date;
+                        const range = Math.floor((new Date(newestDate) - new Date(oldestDate)) / (1000 * 60 * 60 * 24));
+                        
+                        log(`📈 ${symbol}: ${symbolData.length} bản ghi, khoảng ${range} ngày (${oldestDate} → ${newestDate})`, 
+                            range >= 300 ? 'success' : range >= 150 ? 'warning' : 'error');
+                    } else {
+                        log(`❌ ${symbol}: Không có dữ liệu`, 'error');
+                    }
+                }
+                
+                // Diagnosis
+                log("\n🎯 CHẨN ĐOÁN:", 'info');
+                if (daysDiff > 30) {
+                    log("❌ Dữ liệu quá cũ - cần sync dữ liệu mới", 'error');
+                } else if (latest.length < 100) {
+                    log("⚠️ Dữ liệu không đủ - cần sync thêm", 'warning');
+                } else {
+                    log("✅ Dữ liệu OK - có thể là vấn đề hiển thị", 'success');
+                }
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function syncRecentData() {
+            log("\n🔄 Đang sync dữ liệu mới...", 'info');
+            
+            const symbols = ['VNM', 'VCB', 'FPT'];
+            let totalInserted = 0;
+            
+            for (const symbol of symbols) {
+                try {
+                    log(`📊 Đang lấy dữ liệu ${symbol}...`, 'info');
+                    
+                    // Get data from SSI API
+                    const endDate = new Date();
+                    const startDate = new Date();
+                    startDate.setDate(startDate.getDate() - 365);
+                    
+                    const fromTimestamp = Math.floor(startDate.getTime() / 1000);
+                    const toTimestamp = Math.floor(endDate.getTime() / 1000);
+                    
+                    const ssiUrl = `https://iboard.ssi.com.vn/dchart/api/history?resolution=D&symbol=${symbol}&from=${fromTimestamp}&to=${toTimestamp}`;
+                    
+                    const ssiResponse = await fetch(ssiUrl, {
+                        headers: {
+                            'Accept': 'application/json',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+                    });
+                    
+                    if (!ssiResponse.ok) {
+                        throw new Error(`SSI API error: ${ssiResponse.status}`);
+                    }
+                    
+                    const ssiData = await ssiResponse.json();
+                    
+                    if (ssiData.s !== 'ok' || !ssiData.t) {
+                        log(`⚠️ ${symbol}: Không có dữ liệu từ SSI`, 'warning');
+                        continue;
+                    }
+                    
+                    // Transform data
+                    const prices = [];
+                    for (let i = 0; i < ssiData.t.length; i++) {
+                        const tradingDate = new Date(ssiData.t[i] * 1000).toISOString().split('T')[0];
+                        prices.push({
+                            symbol: symbol,
+                            trading_date: tradingDate,
+                            open_price: ssiData.o[i],
+                            high_price: ssiData.h[i],
+                            low_price: ssiData.l[i],
+                            close_price: ssiData.c[i],
+                            volume: ssiData.v[i]
+                        });
+                    }
+                    
+                    log(`✅ ${symbol}: Lấy được ${prices.length} bản ghi`, 'success');
+                    
+                    // Insert to Supabase
+                    if (prices.length > 0) {
+                        const insertResponse = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                            method: 'POST',
+                            headers: serviceHeaders,
+                            body: JSON.stringify(prices)
+                        });
+                        
+                        if (insertResponse.ok) {
+                            totalInserted += prices.length;
+                            log(`✅ ${symbol}: Đã insert ${prices.length} bản ghi`, 'success');
+                        } else {
+                            log(`❌ ${symbol}: Lỗi insert - ${insertResponse.status}`, 'error');
+                        }
+                    }
+                    
+                    // Delay to avoid rate limiting
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                } catch (error) {
+                    log(`❌ ${symbol}: ${error.message}`, 'error');
+                }
+            }
+            
+            log(`\n🎉 Hoàn thành! Đã sync ${totalInserted} bản ghi`, 'success');
+            log("🔄 Hãy refresh ứng dụng và test lại chức năng 1Y", 'info');
+        }
+
+        async function testSpecificStock() {
+            log("\n📊 Test dữ liệu mã cụ thể...", 'info');
+            
+            const symbol = 'VNM';
+            
+            try {
+                // Get 1 year data
+                const data = await fetchFromSupabase("stock_prices", `symbol=eq.${symbol}&order=trading_date.desc&limit=365`);
+                
+                if (data.length === 0) {
+                    log(`❌ ${symbol}: Không có dữ liệu`, 'error');
+                    return;
+                }
+                
+                log(`📈 ${symbol}: Có ${data.length} bản ghi`, 'success');
+                
+                // Show date range
+                const newest = data[0].trading_date;
+                const oldest = data[data.length - 1].trading_date;
+                log(`📅 Khoảng: ${oldest} → ${newest}`, 'info');
+                
+                // Show recent prices
+                log(`💰 Giá gần nhất:`, 'info');
+                for (let i = 0; i < Math.min(5, data.length); i++) {
+                    const d = data[i];
+                    log(`  ${d.trading_date}: ${d.close_price.toLocaleString('vi-VN')} VND`, 'info');
+                }
+                
+                // Check if covers full year
+                const daysCovered = Math.floor((new Date(newest) - new Date(oldest)) / (1000 * 60 * 60 * 24));
+                log(`⏱️ Phủ ${daysCovered} ngày`, daysCovered >= 300 ? 'success' : 'warning');
+                
+                if (daysCovered >= 300) {
+                    log("✅ Dữ liệu đủ cho 1Y - có thể là vấn đề cache hoặc hiển thị", 'success');
+                    log("💡 Thử hard refresh (Ctrl+F5) ứng dụng", 'info');
+                } else {
+                    log("⚠️ Dữ liệu chưa đủ 1 năm - cần sync thêm", 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto diagnose on load
+        window.addEventListener('load', () => {
+            setTimeout(diagnoseIssue, 1000);
+        });
+    </script>
+</body>
+</html>
