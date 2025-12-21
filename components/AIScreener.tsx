@@ -4,9 +4,10 @@ import {
   TrendingUp, TrendingDown, Gauge, RefreshCw, SlidersHorizontal, X, Brain,
   LayoutGrid, Table, GitCompare, Plus, Minus, AlertTriangle, CheckCircle, Eye,
   Clock, Target, Award, BarChart2, Star, Shield, Flame, MessageSquare, Wand2,
+  DollarSign,
 } from 'lucide-react';
 import {
-  getVN100Companies, getAllTechnicalIndicators, getAllAIAnalysis, Company, TechnicalIndicators, AIAnalysis,
+  getVN100Companies, getAllTechnicalIndicators, getAllAIAnalysis, getAllSimplizeCompanyData, Company, TechnicalIndicators, AIAnalysis, SimplizeCompanyData,
 } from '../services/supabaseClient';
 import { parseNaturalLanguageFilter, quickSuggestions } from '../services/openaiService';
 
@@ -28,6 +29,25 @@ interface ScreenerResult {
   maCrossSignal: string;
   reason: string;
   aiScore: number; // SENAI Recommendation Score
+  // Fundamental data
+  pe: number | null;
+  pb: number | null;
+  roe: number | null;
+  eps: number | null;
+  revenueGrowth: number | null;
+  profitGrowth: number | null;
+  debtToEquity: number | null;
+  // New fields from Simplize
+  dividendYield: number | null;
+  marketCap: number | null;
+  beta: number | null;
+  valuationPoint: number | null;
+  growthPoint: number | null;
+  financialHealthPoint: number | null;
+  dividendPoint: number | null;
+  priceChange7d: number | null;
+  priceChange30d: number | null;
+  priceChangeYtd: number | null;
 }
 
 interface FilterConfig {
@@ -36,6 +56,31 @@ interface FilterConfig {
   aboveMa20: boolean | null; aboveMa50: boolean | null;
   goldenCross: boolean; minScore: number;
   sectors?: string[];
+  // Fundamental filters
+  peMin: number | null; peMax: number | null;
+  pbMin: number | null; pbMax: number | null;
+  roeMin: number | null;
+  epsGrowthMin: number | null;
+  revenueGrowthMin: number | null;
+  profitGrowthMin: number | null;
+  debtToEquityMax: number | null;
+  // New filters - Simplize scores
+  dividendYieldMin: number | null;
+  marketCapMin: number | null; // in billions
+  marketCapMax: number | null;
+  betaMin: number | null;
+  betaMax: number | null;
+  // Simplize quality scores (0-5)
+  valuationPointMin: number | null;
+  growthPointMin: number | null;
+  financialHealthPointMin: number | null;
+  dividendPointMin: number | null;
+  // Price change filters
+  priceChange7dMin: number | null;
+  priceChange30dMin: number | null;
+  priceChangeYtdMin: number | null;
+  // AI Score filter
+  aiScoreMin: number | null;
 }
 
 interface SectorData {
@@ -62,14 +107,75 @@ const defaultFilters: FilterConfig = {
   rsMin: 0, rsMax: 100, rsiMin: 0, rsiMax: 100,
   trendShort: 'ALL', trendMedium: 'ALL',
   aboveMa20: null, aboveMa50: null, goldenCross: false, minScore: 0,
+  // Fundamental defaults
+  peMin: null, peMax: null,
+  pbMin: null, pbMax: null,
+  roeMin: null,
+  epsGrowthMin: null,
+  revenueGrowthMin: null,
+  profitGrowthMin: null,
+  debtToEquityMax: null,
+  // New filter defaults
+  dividendYieldMin: null,
+  marketCapMin: null,
+  marketCapMax: null,
+  betaMin: null,
+  betaMax: null,
+  valuationPointMin: null,
+  growthPointMin: null,
+  financialHealthPointMin: null,
+  dividendPointMin: null,
+  priceChange7dMin: null,
+  priceChange30dMin: null,
+  priceChangeYtdMin: null,
+  aiScoreMin: null,
 };
 
 const presetFilters = {
+  // === TECHNICAL PRESETS ===
   'RS cao nhất': { ...defaultFilters, rsMin: 70, minScore: 60 },
   'Mô hình bứt phá': { ...defaultFilters, goldenCross: true, aboveMa20: true, trendShort: 'UP' },
   'Quá bán (RSI thấp)': { ...defaultFilters, rsiMax: 30 },
   'Xu hướng tăng': { ...defaultFilters, trendShort: 'UP', trendMedium: 'UP', aboveMa20: true },
   'Momentum mạnh': { ...defaultFilters, rsMin: 60, rsiMin: 50, rsiMax: 70, aboveMa20: true, minScore: 65 },
+  
+  // === VALUE INVESTING (Warren Buffett style) ===
+  'Value - P/E thấp': { ...defaultFilters, peMin: 0, peMax: 12, roeMin: 12, financialHealthPointMin: 3 },
+  'Value - P/B thấp': { ...defaultFilters, pbMin: 0, pbMax: 1.5, roeMin: 10 },
+  'Deep Value': { ...defaultFilters, peMax: 10, pbMax: 1, valuationPointMin: 4 },
+  
+  // === GROWTH INVESTING (Peter Lynch style) ===
+  'Tăng trưởng mạnh': { ...defaultFilters, revenueGrowthMin: 15, profitGrowthMin: 15, growthPointMin: 3 },
+  'GARP (PEG < 1)': { ...defaultFilters, peMax: 20, profitGrowthMin: 20, growthPointMin: 3 },
+  'Siêu tăng trưởng': { ...defaultFilters, revenueGrowthMin: 25, profitGrowthMin: 25, priceChange30dMin: 5 },
+  
+  // === QUALITY INVESTING ===
+  'Cổ phiếu chất lượng': { ...defaultFilters, roeMin: 15, financialHealthPointMin: 4, peMax: 25 },
+  'ROE cao': { ...defaultFilters, roeMin: 18, financialHealthPointMin: 3 },
+  'Blue chip': { ...defaultFilters, marketCapMin: 50000, roeMin: 12, financialHealthPointMin: 4, betaMax: 1.2 },
+  
+  // === DIVIDEND INVESTING ===
+  'Cổ tức cao': { ...defaultFilters, dividendYieldMin: 5, dividendPointMin: 3 },
+  'Cổ tức ổn định': { ...defaultFilters, dividendYieldMin: 3, dividendPointMin: 4, financialHealthPointMin: 3 },
+  
+  // === SIMPLIZE QUALITY SCORES ===
+  'Định giá hấp dẫn': { ...defaultFilters, valuationPointMin: 4, peMax: 15, pbMax: 2 },
+  'Sức khỏe TC tốt': { ...defaultFilters, financialHealthPointMin: 4, roeMin: 10 },
+  'Điểm tổng hợp cao': { ...defaultFilters, valuationPointMin: 3, growthPointMin: 3, financialHealthPointMin: 3 },
+  
+  // === AI SCORE ===
+  'SENAI Score cao': { ...defaultFilters, aiScoreMin: 75 },
+  'SENAI Mua mạnh': { ...defaultFilters, aiScoreMin: 80, trendShort: 'UP' },
+  'SENAI + Momentum': { ...defaultFilters, aiScoreMin: 65, rsMin: 60, aboveMa20: true },
+  
+  // === PRICE ACTION ===
+  'Tăng giá 7 ngày': { ...defaultFilters, priceChange7dMin: 5, rsMin: 50 },
+  'Tăng giá 30 ngày': { ...defaultFilters, priceChange30dMin: 10, trendMedium: 'UP' },
+  'Breakout tiềm năng': { ...defaultFilters, priceChange7dMin: 3, rsMin: 70, aboveMa20: true, goldenCross: true },
+  
+  // === RISK-ADJUSTED ===
+  'Beta thấp (phòng thủ)': { ...defaultFilters, betaMax: 0.8, financialHealthPointMin: 3, dividendYieldMin: 2 },
+  'Beta cao (tấn công)': { ...defaultFilters, betaMin: 1.3, rsMin: 60, trendShort: 'UP' },
 };
 
 type ViewMode = 'table' | 'heatmap' | 'compare' | 'backtest' | 'rotation';
@@ -198,7 +304,7 @@ const calculateSenAIScore = (
 // Get SENAI Score color and label
 const getSenAIScoreInfo = (score: number) => {
   if (score >= 80) return { color: 'text-emerald-500', bg: 'bg-emerald-500/20', label: 'Mua mạnh', icon: Flame };
-  if (score >= 65) return { color: 'text-cyan-500', bg: 'bg-cyan-500/20', label: 'Khuyến nghị', icon: Star };
+  if (score >= 65) return { color: 'text-emerald-400', bg: 'bg-emerald-400/20', label: 'Khuyến nghị', icon: Star };
   if (score >= 50) return { color: 'text-amber-500', bg: 'bg-amber-500/20', label: 'Theo dõi', icon: Eye };
   if (score >= 35) return { color: 'text-orange-500', bg: 'bg-orange-500/20', label: 'Thận trọng', icon: AlertTriangle };
   return { color: 'text-rose-500', bg: 'bg-rose-500/20', label: 'Tránh', icon: Shield };
@@ -233,9 +339,12 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [technicalData, setTechnicalData] = useState<TechnicalIndicators[]>([]);
   const [aiAnalysisData, setAiAnalysisData] = useState<AIAnalysis[]>([]);
+  const [simplizeData, setSimplizeData] = useState<SimplizeCompanyData[]>([]);
   const [filters, setFilters] = useState<FilterConfig>(defaultFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [activePresets, setActivePresets] = useState<string[]>([]); // Multiple presets combined
+  const [combineMode, setCombineMode] = useState(false); // Toggle combine mode
   const [sortBy, setSortBy] = useState<'score' | 'rs' | 'change' | 'rsi' | 'aiScore'>('aiScore');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
@@ -252,12 +361,20 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [companiesData, techData, aiData] = await Promise.all([
-          getVN100Companies(), getAllTechnicalIndicators(), getAllAIAnalysis(),
+        const [companiesData, techData, aiData, simplizeDataResult] = await Promise.all([
+          getVN100Companies(), getAllTechnicalIndicators(), getAllAIAnalysis(), getAllSimplizeCompanyData(),
         ]);
         setCompanies(companiesData);
         setTechnicalData(techData);
         setAiAnalysisData(aiData);
+        setSimplizeData(simplizeDataResult);
+        
+        // Debug log for simplize data
+        console.log('📊 Simplize data loaded:', simplizeDataResult.length, 'records');
+        if (simplizeDataResult.length === 0) {
+          console.warn('⚠️ No simplize company data found. Please sync simplize_company_data table.');
+        }
+        
         if (techData.length > 0 && techData[0].calculation_date) {
           setLastUpdated(techData[0].calculation_date);
         }
@@ -292,6 +409,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
   const filteredResults = useMemo(() => {
     if (technicalData.length === 0) return [];
     let filtered = technicalData.filter((tech) => {
+      // Technical filters
       if (tech.rs_rating < filters.rsMin || tech.rs_rating > filters.rsMax) return false;
       if (tech.rsi_14 < filters.rsiMin || tech.rsi_14 > filters.rsiMax) return false;
       if (filters.trendShort !== 'ALL' && tech.trend_short !== filters.trendShort) return false;
@@ -312,19 +430,79 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
         if (!matchesSector) return false;
       }
       
+      // Fundamental filters - using Simplize data
+      const simplize = simplizeData.find((s) => s.symbol === tech.symbol);
+      if (simplize) {
+        if (filters.peMin !== null && (simplize.pe_ratio === null || simplize.pe_ratio < filters.peMin)) return false;
+        if (filters.peMax !== null && (simplize.pe_ratio === null || simplize.pe_ratio > filters.peMax)) return false;
+        if (filters.pbMin !== null && (simplize.pb_ratio === null || simplize.pb_ratio < filters.pbMin)) return false;
+        if (filters.pbMax !== null && (simplize.pb_ratio === null || simplize.pb_ratio > filters.pbMax)) return false;
+        // ROE in Simplize is already percentage (15 = 15%)
+        if (filters.roeMin !== null && (simplize.roe === null || simplize.roe < filters.roeMin)) return false;
+        // Growth rates in Simplize are already percentage
+        if (filters.revenueGrowthMin !== null && (simplize.revenue_5y_growth === null || simplize.revenue_5y_growth < filters.revenueGrowthMin)) return false;
+        if (filters.profitGrowthMin !== null && (simplize.net_income_5y_growth === null || simplize.net_income_5y_growth < filters.profitGrowthMin)) return false;
+        // Simplize doesn't have debt_to_equity directly, skip this filter or use alternative
+      } else {
+        // If no simplize data and fundamental filters are set, exclude
+        if (filters.peMin !== null || filters.peMax !== null || filters.pbMin !== null || 
+            filters.pbMax !== null || filters.roeMin !== null || filters.revenueGrowthMin !== null ||
+            filters.profitGrowthMin !== null) {
+          return false;
+        }
+      }
+      
+      // New filters - Simplize specific
+      if (simplize) {
+        // Dividend yield filter
+        if (filters.dividendYieldMin !== null && (simplize.dividend_yield === null || simplize.dividend_yield < filters.dividendYieldMin)) return false;
+        
+        // Market cap filter (in billions)
+        const marketCapBillions = simplize.market_cap ? simplize.market_cap / 1000000000 : null;
+        if (filters.marketCapMin !== null && (marketCapBillions === null || marketCapBillions < filters.marketCapMin)) return false;
+        if (filters.marketCapMax !== null && (marketCapBillions === null || marketCapBillions > filters.marketCapMax)) return false;
+        
+        // Beta filter
+        if (filters.betaMin !== null && (simplize.beta_5y === null || simplize.beta_5y < filters.betaMin)) return false;
+        if (filters.betaMax !== null && (simplize.beta_5y === null || simplize.beta_5y > filters.betaMax)) return false;
+        
+        // Simplize quality scores (0-5)
+        if (filters.valuationPointMin !== null && (simplize.valuation_point === null || simplize.valuation_point < filters.valuationPointMin)) return false;
+        if (filters.growthPointMin !== null && (simplize.growth_point === null || simplize.growth_point < filters.growthPointMin)) return false;
+        if (filters.financialHealthPointMin !== null && (simplize.financial_health_point === null || simplize.financial_health_point < filters.financialHealthPointMin)) return false;
+        if (filters.dividendPointMin !== null && (simplize.dividend_point === null || simplize.dividend_point < filters.dividendPointMin)) return false;
+        
+        // Price change filters
+        if (filters.priceChange7dMin !== null && (simplize.price_chg_7d === null || simplize.price_chg_7d < filters.priceChange7dMin)) return false;
+        if (filters.priceChange30dMin !== null && (simplize.price_chg_30d === null || simplize.price_chg_30d < filters.priceChange30dMin)) return false;
+        if (filters.priceChangeYtdMin !== null && (simplize.price_chg_ytd === null || simplize.price_chg_ytd < filters.priceChangeYtdMin)) return false;
+      } else {
+        // If no simplize data and new filters are set, exclude
+        if (filters.dividendYieldMin !== null || filters.marketCapMin !== null || filters.marketCapMax !== null ||
+            filters.betaMin !== null || filters.betaMax !== null || filters.valuationPointMin !== null ||
+            filters.growthPointMin !== null || filters.financialHealthPointMin !== null || filters.dividendPointMin !== null ||
+            filters.priceChange7dMin !== null || filters.priceChange30dMin !== null || filters.priceChangeYtdMin !== null) {
+          return false;
+        }
+      }
+      
       return true;
     });
     
     const results = filtered.map((tech) => {
       const company = companies.find((c) => c.symbol === tech.symbol);
       const aiAnalysis = aiAnalysisData.find((a) => a.symbol === tech.symbol);
+      const simplize = simplizeData.find((s) => s.symbol === tech.symbol);
+      const aiScore = calculateSenAIScore(tech, company, aiAnalysis);
+      
+      // AI Score filter (applied after calculation)
       return {
         ticker: tech.symbol,
-        name: company?.company_name || tech.symbol,
-        sector: company?.industry || 'Khác',
-        price: tech.current_price || 0,
-        change1d: tech.price_change_1d || 0,
-        change5d: tech.price_change_5d || 0,
+        name: simplize?.name_vi || company?.company_name || tech.symbol,
+        sector: simplize?.industry || company?.industry || 'Khác',
+        price: simplize?.price_close || tech.current_price || 0,
+        change1d: simplize?.pct_change || tech.price_change_1d || 0,
+        change5d: simplize?.price_chg_7d || tech.price_change_5d || 0,
         rsRating: tech.rs_rating || 0,
         rsi: tech.rsi_14 || 50,
         trendShort: tech.trend_short || 'SIDEWAYS',
@@ -335,11 +513,35 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
         priceVsMa20: tech.price_vs_ma20 || 0,
         maCrossSignal: tech.ma_cross_signal || 'NONE',
         reason: company ? generateAIReason(tech, company) : 'Đang cập nhật...',
-        aiScore: calculateSenAIScore(tech, company, aiAnalysis),
+        aiScore,
+        // Fundamental data from Simplize
+        pe: simplize?.pe_ratio ?? null,
+        pb: simplize?.pb_ratio ?? null,
+        roe: simplize?.roe ?? null,
+        eps: simplize?.eps ?? null,
+        revenueGrowth: simplize?.revenue_5y_growth ?? null,
+        profitGrowth: simplize?.net_income_5y_growth ?? null,
+        debtToEquity: null,
+        // New fields from Simplize
+        dividendYield: simplize?.dividend_yield ?? null,
+        marketCap: simplize?.market_cap ?? null,
+        beta: simplize?.beta_5y ?? null,
+        valuationPoint: simplize?.valuation_point ?? null,
+        growthPoint: simplize?.growth_point ?? null,
+        financialHealthPoint: simplize?.financial_health_point ?? null,
+        dividendPoint: simplize?.dividend_point ?? null,
+        priceChange7d: simplize?.price_chg_7d ?? null,
+        priceChange30d: simplize?.price_chg_30d ?? null,
+        priceChangeYtd: simplize?.price_chg_ytd ?? null,
       };
     });
     
-    results.sort((a, b) => {
+    // Apply AI Score filter after calculation
+    const filteredByAiScore = filters.aiScoreMin !== null 
+      ? results.filter(r => r.aiScore >= filters.aiScoreMin!)
+      : results;
+    
+    filteredByAiScore.sort((a, b) => {
       switch (sortBy) {
         case 'rs': return b.rsRating - a.rsRating;
         case 'change': return b.change1d - a.change1d;
@@ -348,8 +550,8 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
         default: return b.overallScore - a.overallScore;
       }
     });
-    return results;
-  }, [technicalData, companies, aiAnalysisData, filters, sortBy]);
+    return filteredByAiScore;
+  }, [technicalData, companies, aiAnalysisData, simplizeData, filters, sortBy]);
 
   const marketInsights = useMemo((): MarketInsights => {
     if (filteredResults.length === 0) {
@@ -500,12 +702,96 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
 
   const currentResults = viewAll ? filteredResults : filteredResults.slice(0, 10);
 
-  const applyPreset = (presetName: string) => {
-    const preset = presetFilters[presetName as keyof typeof presetFilters];
-    if (preset) { setFilters(preset); setActivePreset(presetName); setQuery(presetName); }
+  // Combine multiple filter configs - take the most restrictive values
+  const combineFilters = (baseFilters: FilterConfig, newPreset: FilterConfig): FilterConfig => {
+    return {
+      ...baseFilters,
+      rsMin: Math.max(baseFilters.rsMin, newPreset.rsMin),
+      rsMax: Math.min(baseFilters.rsMax, newPreset.rsMax),
+      rsiMin: Math.max(baseFilters.rsiMin, newPreset.rsiMin),
+      rsiMax: Math.min(baseFilters.rsiMax, newPreset.rsiMax),
+      trendShort: newPreset.trendShort !== 'ALL' ? newPreset.trendShort : baseFilters.trendShort,
+      trendMedium: newPreset.trendMedium !== 'ALL' ? newPreset.trendMedium : baseFilters.trendMedium,
+      aboveMa20: newPreset.aboveMa20 !== null ? newPreset.aboveMa20 : baseFilters.aboveMa20,
+      aboveMa50: newPreset.aboveMa50 !== null ? newPreset.aboveMa50 : baseFilters.aboveMa50,
+      goldenCross: baseFilters.goldenCross || newPreset.goldenCross,
+      minScore: Math.max(baseFilters.minScore, newPreset.minScore),
+      peMin: newPreset.peMin !== null ? (baseFilters.peMin !== null ? Math.max(baseFilters.peMin, newPreset.peMin) : newPreset.peMin) : baseFilters.peMin,
+      peMax: newPreset.peMax !== null ? (baseFilters.peMax !== null ? Math.min(baseFilters.peMax, newPreset.peMax) : newPreset.peMax) : baseFilters.peMax,
+      pbMin: newPreset.pbMin !== null ? (baseFilters.pbMin !== null ? Math.max(baseFilters.pbMin, newPreset.pbMin) : newPreset.pbMin) : baseFilters.pbMin,
+      pbMax: newPreset.pbMax !== null ? (baseFilters.pbMax !== null ? Math.min(baseFilters.pbMax, newPreset.pbMax) : newPreset.pbMax) : baseFilters.pbMax,
+      roeMin: newPreset.roeMin !== null ? (baseFilters.roeMin !== null ? Math.max(baseFilters.roeMin, newPreset.roeMin) : newPreset.roeMin) : baseFilters.roeMin,
+      revenueGrowthMin: newPreset.revenueGrowthMin !== null ? (baseFilters.revenueGrowthMin !== null ? Math.max(baseFilters.revenueGrowthMin, newPreset.revenueGrowthMin) : newPreset.revenueGrowthMin) : baseFilters.revenueGrowthMin,
+      profitGrowthMin: newPreset.profitGrowthMin !== null ? (baseFilters.profitGrowthMin !== null ? Math.max(baseFilters.profitGrowthMin, newPreset.profitGrowthMin) : newPreset.profitGrowthMin) : baseFilters.profitGrowthMin,
+      dividendYieldMin: newPreset.dividendYieldMin !== null ? (baseFilters.dividendYieldMin !== null ? Math.max(baseFilters.dividendYieldMin, newPreset.dividendYieldMin) : newPreset.dividendYieldMin) : baseFilters.dividendYieldMin,
+      marketCapMin: newPreset.marketCapMin !== null ? (baseFilters.marketCapMin !== null ? Math.max(baseFilters.marketCapMin, newPreset.marketCapMin) : newPreset.marketCapMin) : baseFilters.marketCapMin,
+      marketCapMax: newPreset.marketCapMax !== null ? (baseFilters.marketCapMax !== null ? Math.min(baseFilters.marketCapMax, newPreset.marketCapMax) : newPreset.marketCapMax) : baseFilters.marketCapMax,
+      betaMin: newPreset.betaMin !== null ? (baseFilters.betaMin !== null ? Math.max(baseFilters.betaMin, newPreset.betaMin) : newPreset.betaMin) : baseFilters.betaMin,
+      betaMax: newPreset.betaMax !== null ? (baseFilters.betaMax !== null ? Math.min(baseFilters.betaMax, newPreset.betaMax) : newPreset.betaMax) : baseFilters.betaMax,
+      valuationPointMin: newPreset.valuationPointMin !== null ? (baseFilters.valuationPointMin !== null ? Math.max(baseFilters.valuationPointMin, newPreset.valuationPointMin) : newPreset.valuationPointMin) : baseFilters.valuationPointMin,
+      growthPointMin: newPreset.growthPointMin !== null ? (baseFilters.growthPointMin !== null ? Math.max(baseFilters.growthPointMin, newPreset.growthPointMin) : newPreset.growthPointMin) : baseFilters.growthPointMin,
+      financialHealthPointMin: newPreset.financialHealthPointMin !== null ? (baseFilters.financialHealthPointMin !== null ? Math.max(baseFilters.financialHealthPointMin, newPreset.financialHealthPointMin) : newPreset.financialHealthPointMin) : baseFilters.financialHealthPointMin,
+      dividendPointMin: newPreset.dividendPointMin !== null ? (baseFilters.dividendPointMin !== null ? Math.max(baseFilters.dividendPointMin, newPreset.dividendPointMin) : newPreset.dividendPointMin) : baseFilters.dividendPointMin,
+      priceChange7dMin: newPreset.priceChange7dMin !== null ? (baseFilters.priceChange7dMin !== null ? Math.max(baseFilters.priceChange7dMin, newPreset.priceChange7dMin) : newPreset.priceChange7dMin) : baseFilters.priceChange7dMin,
+      priceChange30dMin: newPreset.priceChange30dMin !== null ? (baseFilters.priceChange30dMin !== null ? Math.max(baseFilters.priceChange30dMin, newPreset.priceChange30dMin) : newPreset.priceChange30dMin) : baseFilters.priceChange30dMin,
+      priceChangeYtdMin: newPreset.priceChangeYtdMin !== null ? (baseFilters.priceChangeYtdMin !== null ? Math.max(baseFilters.priceChangeYtdMin, newPreset.priceChangeYtdMin) : newPreset.priceChangeYtdMin) : baseFilters.priceChangeYtdMin,
+      aiScoreMin: newPreset.aiScoreMin !== null ? (baseFilters.aiScoreMin !== null ? Math.max(baseFilters.aiScoreMin, newPreset.aiScoreMin) : newPreset.aiScoreMin) : baseFilters.aiScoreMin,
+      epsGrowthMin: baseFilters.epsGrowthMin,
+      debtToEquityMax: baseFilters.debtToEquityMax,
+    };
   };
 
-  const resetFilters = () => { setFilters(defaultFilters); setActivePreset(null); setQuery(''); };
+  const applyPreset = (presetName: string) => {
+    const preset = presetFilters[presetName as keyof typeof presetFilters];
+    if (!preset) return;
+    
+    if (combineMode) {
+      // Combine mode: toggle preset on/off
+      if (activePresets.includes(presetName)) {
+        // Remove preset
+        const newActivePresets = activePresets.filter(p => p !== presetName);
+        setActivePresets(newActivePresets);
+        
+        if (newActivePresets.length === 0) {
+          setFilters(defaultFilters);
+          setActivePreset(null);
+          setQuery('');
+        } else {
+          // Recalculate combined filters
+          let combinedFilters = defaultFilters;
+          newActivePresets.forEach(p => {
+            const pFilter = presetFilters[p as keyof typeof presetFilters];
+            if (pFilter) combinedFilters = combineFilters(combinedFilters, pFilter);
+          });
+          setFilters(combinedFilters);
+          setActivePreset(newActivePresets.join(' + '));
+          setQuery(newActivePresets.join(' + '));
+        }
+      } else {
+        // Add preset
+        const newActivePresets = [...activePresets, presetName];
+        setActivePresets(newActivePresets);
+        
+        const combinedFilters = combineFilters(filters, preset);
+        setFilters(combinedFilters);
+        setActivePreset(newActivePresets.join(' + '));
+        setQuery(newActivePresets.join(' + '));
+      }
+    } else {
+      // Single mode: replace current filter
+      setFilters(preset);
+      setActivePreset(presetName);
+      setActivePresets([presetName]);
+      setQuery(presetName);
+    }
+  };
+
+  const resetFilters = () => { 
+    setFilters(defaultFilters); 
+    setActivePreset(null); 
+    setActivePresets([]);
+    setQuery(''); 
+  };
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -595,22 +881,129 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
             </button>
           </div>
 
-          {/* Quick Presets */}
-          <div className="flex flex-wrap justify-center gap-3 pt-2">
-            {Object.keys(presetFilters).map((preset) => (
-              <button key={preset} onClick={() => applyPreset(preset)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all ${
-                  activePreset === preset ? 'bg-indigo-600 text-white border border-indigo-500'
-                    : 'bg-slate-100 dark:bg-slate-800/40 hover:bg-slate-200 dark:hover:bg-slate-700/60 border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-300'
-                }`}>
-                {preset === 'RS cao nhất' && <TrendingUp size={14} />}
-                {preset === 'Mô hình bứt phá' && <Zap size={14} />}
-                {preset === 'Quá bán (RSI thấp)' && <TrendingDown size={14} />}
-                {preset === 'Xu hướng tăng' && <Activity size={14} />}
-                {preset === 'Momentum mạnh' && <Gauge size={14} />}
-                {preset}
-              </button>
-            ))}
+          {/* Combine Mode Toggle & Active Presets */}
+          <div className="w-full flex flex-col gap-3 pt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <div className={`relative w-10 h-5 rounded-full transition-colors ${combineMode ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}
+                    onClick={() => setCombineMode(!combineMode)}>
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${combineMode ? 'translate-x-5' : 'translate-x-0.5'}`}></div>
+                  </div>
+                  <span className="text-xs font-medium text-slate-600 dark:text-slate-400">Kết hợp bộ lọc</span>
+                </label>
+                {combineMode && (
+                  <span className="text-[10px] px-2 py-0.5 bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-full">
+                    Click nhiều bộ lọc để kết hợp
+                  </span>
+                )}
+              </div>
+              {activePresets.length > 0 && (
+                <button onClick={resetFilters} className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1">
+                  <X size={12} /> Xóa tất cả
+                </button>
+              )}
+            </div>
+            
+            {/* Active Presets Tags */}
+            {activePresets.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2 p-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/20">
+                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Đang kết hợp:</span>
+                {activePresets.map((preset) => (
+                  <span key={preset} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600 text-white text-[11px] font-medium rounded-full">
+                    {preset}
+                    <button onClick={() => applyPreset(preset)} className="hover:bg-indigo-700 rounded-full p-0.5">
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+                <span className="text-[10px] text-indigo-500">= {filteredResults.length} kết quả</span>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Presets - 2 rows with horizontal scroll */}
+          <div className="w-full overflow-x-auto custom-scrollbar-horizontal pb-2">
+            <div className="flex flex-col gap-2 min-w-max">
+              {/* Row 1 */}
+              <div className="flex gap-2">
+                {Object.keys(presetFilters).slice(0, Math.ceil(Object.keys(presetFilters).length / 2)).map((preset) => {
+                  const getIcon = (name: string) => {
+                    if (name.includes('RS')) return TrendingUp;
+                    if (name.includes('bứt phá') || name.includes('Breakout')) return Zap;
+                    if (name.includes('Quá bán')) return TrendingDown;
+                    if (name.includes('Xu hướng')) return Activity;
+                    if (name.includes('Momentum')) return Gauge;
+                    if (name.includes('P/E') || name.includes('P/B') || name.includes('Value') || name.includes('Deep')) return DollarSign;
+                    if (name.includes('ROE')) return Target;
+                    if (name.includes('Tăng trưởng') || name.includes('GARP') || name.includes('Siêu')) return TrendingUp;
+                    if (name.includes('chất lượng') || name.includes('Quality')) return Award;
+                    if (name.includes('Cổ tức') || name.includes('Dividend')) return DollarSign;
+                    if (name.includes('Blue chip')) return Shield;
+                    if (name.includes('SENAI')) return Brain;
+                    if (name.includes('Định giá')) return Star;
+                    if (name.includes('giá 7') || name.includes('giá 30')) return Flame;
+                    if (name.includes('Beta')) return Activity;
+                    if (name.includes('Sức khỏe')) return CheckCircle;
+                    return Filter;
+                  };
+                  const Icon = getIcon(preset);
+                  const isActive = activePresets.includes(preset);
+                  return (
+                    <button key={preset} onClick={() => applyPreset(preset)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800/40 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-500/30'
+                      }`}
+                      title={preset}
+                    >
+                      <Icon size={14} className="shrink-0" />
+                      <span>{preset}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Row 2 */}
+              <div className="flex gap-2">
+                {Object.keys(presetFilters).slice(Math.ceil(Object.keys(presetFilters).length / 2)).map((preset) => {
+                  const getIcon = (name: string) => {
+                    if (name.includes('RS')) return TrendingUp;
+                    if (name.includes('bứt phá') || name.includes('Breakout')) return Zap;
+                    if (name.includes('Quá bán')) return TrendingDown;
+                    if (name.includes('Xu hướng')) return Activity;
+                    if (name.includes('Momentum')) return Gauge;
+                    if (name.includes('P/E') || name.includes('P/B') || name.includes('Value') || name.includes('Deep')) return DollarSign;
+                    if (name.includes('ROE')) return Target;
+                    if (name.includes('Tăng trưởng') || name.includes('GARP') || name.includes('Siêu')) return TrendingUp;
+                    if (name.includes('chất lượng') || name.includes('Quality')) return Award;
+                    if (name.includes('Cổ tức') || name.includes('Dividend')) return DollarSign;
+                    if (name.includes('Blue chip')) return Shield;
+                    if (name.includes('SENAI')) return Brain;
+                    if (name.includes('Định giá')) return Star;
+                    if (name.includes('giá 7') || name.includes('giá 30')) return Flame;
+                    if (name.includes('Beta')) return Activity;
+                    if (name.includes('Sức khỏe')) return CheckCircle;
+                    return Filter;
+                  };
+                  const Icon = getIcon(preset);
+                  const isActive = activePresets.includes(preset);
+                  return (
+                    <button key={preset} onClick={() => applyPreset(preset)}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800/40 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-500/30'
+                      }`}
+                      title={preset}
+                    >
+                      <Icon size={14} className="shrink-0" />
+                      <span>{preset}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* AI Natural Language Suggestions */}
@@ -1243,50 +1636,229 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2"><SlidersHorizontal size={18} />Bộ lọc nâng cao</h3>
             <button onClick={() => setShowFilters(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded"><X size={18} className="text-slate-500" /></button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-xs text-slate-500 uppercase font-bold">RS Rating</label>
-              <div className="flex gap-2 mt-1">
-                <input type="number" value={filters.rsMin} onChange={(e) => setFilters({ ...filters, rsMin: Number(e.target.value) })}
-                  className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
-                <input type="number" value={filters.rsMax} onChange={(e) => setFilters({ ...filters, rsMax: Number(e.target.value) })}
-                  className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+          
+          {/* Technical Filters */}
+          <div className="mb-6">
+            <h4 className="text-xs text-indigo-500 uppercase font-bold mb-3 flex items-center gap-2">
+              <BarChart2 size={14} /> Phân tích Kỹ thuật
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">RS Rating</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" value={filters.rsMin} onChange={(e) => setFilters({ ...filters, rsMin: Number(e.target.value) })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" value={filters.rsMax} onChange={(e) => setFilters({ ...filters, rsMax: Number(e.target.value) })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">RSI (14)</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" value={filters.rsiMin} onChange={(e) => setFilters({ ...filters, rsiMin: Number(e.target.value) })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" value={filters.rsiMax} onChange={(e) => setFilters({ ...filters, rsiMax: Number(e.target.value) })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Xu hướng ngắn</label>
+                <select value={filters.trendShort} onChange={(e) => setFilters({ ...filters, trendShort: e.target.value })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="ALL">Tất cả</option><option value="UP">Tăng</option><option value="DOWN">Giảm</option><option value="SIDEWAYS">Sideway</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Vị thế MA20</label>
+                <select value={filters.aboveMa20 === null ? 'ALL' : filters.aboveMa20 ? 'ABOVE' : 'BELOW'}
+                  onChange={(e) => setFilters({ ...filters, aboveMa20: e.target.value === 'ALL' ? null : e.target.value === 'ABOVE' })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="ALL">Tất cả</option><option value="ABOVE">Trên MA20</option><option value="BELOW">Dưới MA20</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={filters.goldenCross} onChange={(e) => setFilters({ ...filters, goldenCross: e.target.checked })}
+                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">Golden Cross</span>
+                </label>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-500 uppercase font-bold">RSI (14)</label>
-              <div className="flex gap-2 mt-1">
-                <input type="number" value={filters.rsiMin} onChange={(e) => setFilters({ ...filters, rsiMin: Number(e.target.value) })}
-                  className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
-                <input type="number" value={filters.rsiMax} onChange={(e) => setFilters({ ...filters, rsiMax: Number(e.target.value) })}
-                  className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+          </div>
+
+          {/* Fundamental Filters */}
+          <div className="mb-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <h4 className="text-xs text-emerald-500 uppercase font-bold mb-3 flex items-center gap-2">
+              <DollarSign size={14} /> Phân tích Cơ bản
+              {simplizeData.length === 0 && (
+                <span className="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-500 rounded text-[10px] font-normal">
+                  Chưa có dữ liệu
+                </span>
+              )}
+            </h4>
+            
+            {simplizeData.length === 0 && (
+              <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">Chưa có dữ liệu Simplize</p>
+                    <p className="text-xs text-amber-500/80 mt-0.5">Mở file <code className="bg-amber-500/20 px-1 rounded">create-simplize-table.html</code> để đồng bộ dữ liệu P/E, P/B, ROE...</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">P/E Ratio</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" value={filters.peMin ?? ''} onChange={(e) => setFilters({ ...filters, peMin: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" value={filters.peMax ?? ''} onChange={(e) => setFilters({ ...filters, peMax: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">P/B Ratio</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" step="0.1" value={filters.pbMin ?? ''} onChange={(e) => setFilters({ ...filters, pbMin: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" step="0.1" value={filters.pbMax ?? ''} onChange={(e) => setFilters({ ...filters, pbMax: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">ROE (%) Min</label>
+                <input type="number" value={filters.roeMin ?? ''} onChange={(e) => setFilters({ ...filters, roeMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="VD: 15" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">D/E Max</label>
+                <input type="number" step="0.1" value={filters.debtToEquityMax ?? ''} onChange={(e) => setFilters({ ...filters, debtToEquityMax: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="VD: 1.5" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Tăng trưởng DT (%) Min</label>
+                <input type="number" value={filters.revenueGrowthMin ?? ''} onChange={(e) => setFilters({ ...filters, revenueGrowthMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="VD: 10" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Tăng trưởng LN (%) Min</label>
+                <input type="number" value={filters.profitGrowthMin ?? ''} onChange={(e) => setFilters({ ...filters, profitGrowthMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="VD: 15" />
               </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-500 uppercase font-bold">Xu hướng ngắn</label>
-              <select value={filters.trendShort} onChange={(e) => setFilters({ ...filters, trendShort: e.target.value })}
-                className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
-                <option value="ALL">Tất cả</option><option value="UP">Tăng</option><option value="DOWN">Giảm</option><option value="SIDEWAYS">Sideway</option>
-              </select>
+          </div>
+
+          {/* Simplize Quality Scores */}
+          <div className="mb-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <h4 className="text-xs text-purple-500 uppercase font-bold mb-3 flex items-center gap-2">
+              <Star size={14} /> Điểm chất lượng Simplize (0-5)
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500"></span> Định giá
+                </label>
+                <select value={filters.valuationPointMin ?? ''} onChange={(e) => setFilters({ ...filters, valuationPointMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="">Tất cả</option>
+                  <option value="3">≥ 3 (Tốt)</option>
+                  <option value="4">≥ 4 (Rất tốt)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Tăng trưởng
+                </label>
+                <select value={filters.growthPointMin ?? ''} onChange={(e) => setFilters({ ...filters, growthPointMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="">Tất cả</option>
+                  <option value="3">≥ 3 (Tốt)</option>
+                  <option value="4">≥ 4 (Rất tốt)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span> Sức khỏe TC
+                </label>
+                <select value={filters.financialHealthPointMin ?? ''} onChange={(e) => setFilters({ ...filters, financialHealthPointMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="">Tất cả</option>
+                  <option value="3">≥ 3 (Tốt)</option>
+                  <option value="4">≥ 4 (Rất tốt)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span> Cổ tức
+                </label>
+                <select value={filters.dividendPointMin ?? ''} onChange={(e) => setFilters({ ...filters, dividendPointMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="">Tất cả</option>
+                  <option value="3">≥ 3 (Tốt)</option>
+                  <option value="4">≥ 4 (Rất tốt)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span> SENAI Score
+                </label>
+                <select value={filters.aiScoreMin ?? ''} onChange={(e) => setFilters({ ...filters, aiScoreMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
+                  <option value="">Tất cả</option>
+                  <option value="50">≥ 50 (Theo dõi)</option>
+                  <option value="65">≥ 65 (Khuyến nghị)</option>
+                  <option value="80">≥ 80 (Mua mạnh)</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label className="text-xs text-slate-500 uppercase font-bold">Vị thế MA20</label>
-              <select value={filters.aboveMa20 === null ? 'ALL' : filters.aboveMa20 ? 'ABOVE' : 'BELOW'}
-                onChange={(e) => setFilters({ ...filters, aboveMa20: e.target.value === 'ALL' ? null : e.target.value === 'ABOVE' })}
-                className="w-full mt-1 px-2 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm">
-                <option value="ALL">Tất cả</option><option value="ABOVE">Trên MA20</option><option value="BELOW">Dưới MA20</option>
-              </select>
+          </div>
+
+          {/* Market Cap & Beta */}
+          <div className="mb-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <h4 className="text-xs text-rose-500 uppercase font-bold mb-3 flex items-center gap-2">
+              <Target size={14} /> Quy mô & Rủi ro
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Vốn hóa (tỷ VND)</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" value={filters.marketCapMin ?? ''} onChange={(e) => setFilters({ ...filters, marketCapMin: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" value={filters.marketCapMax ?? ''} onChange={(e) => setFilters({ ...filters, marketCapMax: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Beta (5Y)</label>
+                <div className="flex gap-2 mt-1">
+                  <input type="number" step="0.1" value={filters.betaMin ?? ''} onChange={(e) => setFilters({ ...filters, betaMin: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min" />
+                  <input type="number" step="0.1" value={filters.betaMax ?? ''} onChange={(e) => setFilters({ ...filters, betaMax: e.target.value ? Number(e.target.value) : null })}
+                    className="w-full px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Max" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Thay đổi 7D (%)</label>
+                <input type="number" value={filters.priceChange7dMin ?? ''} onChange={(e) => setFilters({ ...filters, priceChange7dMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min %" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 uppercase font-bold">Thay đổi 30D (%)</label>
+                <input type="number" value={filters.priceChange30dMin ?? ''} onChange={(e) => setFilters({ ...filters, priceChange30dMin: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full mt-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-sm" placeholder="Min %" />
+              </div>
             </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={filters.goldenCross} onChange={(e) => setFilters({ ...filters, goldenCross: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                <span className="text-sm text-slate-700 dark:text-slate-300">Golden Cross</span>
-              </label>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+            <div className="text-xs text-slate-500">
+              <span className="font-medium text-slate-700 dark:text-slate-300">{filteredResults.length}</span> cổ phiếu phù hợp
             </div>
-            <div className="flex items-end">
-              <button onClick={resetFilters} className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-sm font-medium transition-colors">Reset</button>
-            </div>
+            <button onClick={resetFilters} className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-sm font-medium transition-colors">Reset tất cả</button>
           </div>
         </div>
       )}
@@ -1333,8 +1905,37 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                   <th className="py-4 font-medium text-center">SENAI Score</th>
                   <th className="py-4 text-right font-medium">Giá</th>
                   <th className="py-4 text-right font-medium">1D %</th>
-                  <th className="py-4 text-center font-medium">RS</th>
-                  <th className="py-4 text-center font-medium">RSI</th>
+                  {/* Dynamic columns based on active filters */}
+                  {(filters.rsMin > 0 || filters.rsMax < 100 || !activePreset) && (
+                    <th className="py-4 text-center font-medium">RS</th>
+                  )}
+                  {(filters.rsiMin > 0 || filters.rsiMax < 100) && (
+                    <th className="py-4 text-center font-medium">RSI</th>
+                  )}
+                  {(filters.peMin !== null || filters.peMax !== null) && (
+                    <th className="py-4 text-center font-medium">P/E</th>
+                  )}
+                  {(filters.pbMin !== null || filters.pbMax !== null) && (
+                    <th className="py-4 text-center font-medium">P/B</th>
+                  )}
+                  {filters.roeMin !== null && (
+                    <th className="py-4 text-center font-medium">ROE</th>
+                  )}
+                  {filters.dividendYieldMin !== null && (
+                    <th className="py-4 text-center font-medium">Cổ tức</th>
+                  )}
+                  {(filters.revenueGrowthMin !== null || filters.profitGrowthMin !== null) && (
+                    <th className="py-4 text-center font-medium">Tăng trưởng</th>
+                  )}
+                  {(filters.valuationPointMin !== null || filters.growthPointMin !== null || filters.financialHealthPointMin !== null) && (
+                    <th className="py-4 text-center font-medium">Điểm CL</th>
+                  )}
+                  {(filters.priceChange7dMin !== null || filters.priceChange30dMin !== null) && (
+                    <th className="py-4 text-center font-medium">Biến động</th>
+                  )}
+                  {(filters.betaMin !== null || filters.betaMax !== null) && (
+                    <th className="py-4 text-center font-medium">Beta</th>
+                  )}
                   <th className="py-4 text-center font-medium">Xu hướng</th>
                   <th className="py-4 pl-4 font-medium">Khuyến nghị</th>
                 </tr>
@@ -1350,7 +1951,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                   ))
                 ) : currentResults.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500">
+                    <td colSpan={15} className="py-12 text-center text-slate-500">
                       <Filter size={32} className="mx-auto text-slate-400 mb-2" />
                       <p>Không tìm thấy cổ phiếu phù hợp</p>
                       <button onClick={resetFilters} className="text-indigo-500 hover:text-indigo-600 text-sm font-medium mt-2">Reset bộ lọc</button>
@@ -1387,19 +1988,119 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
                         <td className={`py-4 text-right font-medium font-mono ${stock.change1d >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                           {stock.change1d > 0 ? '+' : ''}{stock.change1d.toFixed(1)}%
                         </td>
-                        <td className="py-4 text-center">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                            stock.rsRating >= 80 ? 'bg-emerald-500/20 text-emerald-500' :
-                            stock.rsRating >= 60 ? 'bg-cyan-500/20 text-cyan-500' :
-                            stock.rsRating >= 40 ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-500/20 text-slate-500'
-                          }`}>{Math.round(stock.rsRating)}</span>
-                        </td>
-                        <td className="py-4 text-center">
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
-                            stock.rsi > 70 ? 'bg-rose-500/20 text-rose-500' :
-                            stock.rsi < 30 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-500/20 text-slate-500'
-                          }`}>{Math.round(stock.rsi)}</span>
-                        </td>
+                        {/* Dynamic data columns */}
+                        {(filters.rsMin > 0 || filters.rsMax < 100 || !activePreset) && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.rsRating >= 80 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.rsRating >= 60 ? 'bg-cyan-500/20 text-cyan-500' :
+                              stock.rsRating >= 40 ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-500/20 text-slate-500'
+                            }`}>{Math.round(stock.rsRating)}</span>
+                          </td>
+                        )}
+                        {(filters.rsiMin > 0 || filters.rsiMax < 100) && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.rsi > 70 ? 'bg-rose-500/20 text-rose-500' :
+                              stock.rsi < 30 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-slate-500/20 text-slate-500'
+                            }`}>{Math.round(stock.rsi)}</span>
+                          </td>
+                        )}
+                        {(filters.peMin !== null || filters.peMax !== null) && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.pe && stock.pe < 12 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.pe && stock.pe < 20 ? 'bg-cyan-500/20 text-cyan-500' :
+                              stock.pe && stock.pe < 30 ? 'bg-amber-500/20 text-amber-500' : 'bg-rose-500/20 text-rose-500'
+                            }`}>{stock.pe?.toFixed(1) || '--'}</span>
+                          </td>
+                        )}
+                        {(filters.pbMin !== null || filters.pbMax !== null) && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.pb && stock.pb < 1 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.pb && stock.pb < 2 ? 'bg-cyan-500/20 text-cyan-500' :
+                              stock.pb && stock.pb < 3 ? 'bg-amber-500/20 text-amber-500' : 'bg-rose-500/20 text-rose-500'
+                            }`}>{stock.pb?.toFixed(2) || '--'}</span>
+                          </td>
+                        )}
+                        {filters.roeMin !== null && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.roe && stock.roe >= 20 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.roe && stock.roe >= 15 ? 'bg-cyan-500/20 text-cyan-500' :
+                              stock.roe && stock.roe >= 10 ? 'bg-amber-500/20 text-amber-500' : 'bg-slate-500/20 text-slate-500'
+                            }`}>{stock.roe?.toFixed(1) || '--'}%</span>
+                          </td>
+                        )}
+                        {filters.dividendYieldMin !== null && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.dividendYield && stock.dividendYield >= 5 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.dividendYield && stock.dividendYield >= 3 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-slate-500/20 text-slate-500'
+                            }`}>{stock.dividendYield?.toFixed(1) || '--'}%</span>
+                          </td>
+                        )}
+                        {(filters.revenueGrowthMin !== null || filters.profitGrowthMin !== null) && (
+                          <td className="py-4 text-center">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`text-[10px] ${stock.revenueGrowth && stock.revenueGrowth > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                DT: {stock.revenueGrowth?.toFixed(0) || '--'}%
+                              </span>
+                              <span className={`text-[10px] ${stock.profitGrowth && stock.profitGrowth > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                LN: {stock.profitGrowth?.toFixed(0) || '--'}%
+                              </span>
+                            </div>
+                          </td>
+                        )}
+                        {(filters.valuationPointMin !== null || filters.growthPointMin !== null || filters.financialHealthPointMin !== null) && (
+                          <td className="py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {filters.valuationPointMin !== null && (
+                                <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
+                                  stock.valuationPoint && stock.valuationPoint >= 4 ? 'bg-emerald-500/20 text-emerald-500' :
+                                  stock.valuationPoint && stock.valuationPoint >= 3 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-slate-500/20 text-slate-500'
+                                }`} title="Định giá">{stock.valuationPoint || '-'}</span>
+                              )}
+                              {filters.growthPointMin !== null && (
+                                <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
+                                  stock.growthPoint && stock.growthPoint >= 4 ? 'bg-emerald-500/20 text-emerald-500' :
+                                  stock.growthPoint && stock.growthPoint >= 3 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-slate-500/20 text-slate-500'
+                                }`} title="Tăng trưởng">{stock.growthPoint || '-'}</span>
+                              )}
+                              {filters.financialHealthPointMin !== null && (
+                                <span className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center ${
+                                  stock.financialHealthPoint && stock.financialHealthPoint >= 4 ? 'bg-emerald-500/20 text-emerald-500' :
+                                  stock.financialHealthPoint && stock.financialHealthPoint >= 3 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-slate-500/20 text-slate-500'
+                                }`} title="Sức khỏe TC">{stock.financialHealthPoint || '-'}</span>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                        {(filters.priceChange7dMin !== null || filters.priceChange30dMin !== null) && (
+                          <td className="py-4 text-center">
+                            <div className="flex flex-col items-center gap-0.5">
+                              {filters.priceChange7dMin !== null && (
+                                <span className={`text-[10px] font-medium ${stock.priceChange7d && stock.priceChange7d > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                  7D: {stock.priceChange7d ? (stock.priceChange7d > 0 ? '+' : '') + stock.priceChange7d.toFixed(1) : '--'}%
+                                </span>
+                              )}
+                              {filters.priceChange30dMin !== null && (
+                                <span className={`text-[10px] font-medium ${stock.priceChange30d && stock.priceChange30d > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                  30D: {stock.priceChange30d ? (stock.priceChange30d > 0 ? '+' : '') + stock.priceChange30d.toFixed(1) : '--'}%
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                        {(filters.betaMin !== null || filters.betaMax !== null) && (
+                          <td className="py-4 text-center">
+                            <span className={`inline-block px-2 py-1 rounded text-xs font-bold ${
+                              stock.beta && stock.beta < 0.8 ? 'bg-emerald-500/20 text-emerald-500' :
+                              stock.beta && stock.beta < 1.2 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-rose-500/20 text-rose-500'
+                            }`}>{stock.beta?.toFixed(2) || '--'}</span>
+                          </td>
+                        )}
                         <td className="py-4 text-center">
                           <div className="flex items-center justify-center gap-1">
                             {stock.trendShort === 'UP' ? <TrendingUp size={14} className="text-emerald-500" /> :
@@ -1444,7 +2145,7 @@ const AIScreener: React.FC<AIScreenerProps> = ({ isDark = true }) => {
             <span className="text-slate-500 font-medium">SENAI Score:</span>
             {[
               { min: 80, label: 'Mua mạnh', icon: Flame, color: 'text-emerald-500', bg: 'bg-emerald-500/20' },
-              { min: 65, label: 'Khuyến nghị', icon: Star, color: 'text-cyan-500', bg: 'bg-cyan-500/20' },
+              { min: 65, label: 'Khuyến nghị', icon: Star, color: 'text-emerald-400', bg: 'bg-emerald-400/20' },
               { min: 50, label: 'Theo dõi', icon: Eye, color: 'text-amber-500', bg: 'bg-amber-500/20' },
               { min: 35, label: 'Thận trọng', icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-500/20' },
               { min: 0, label: 'Tránh', icon: Shield, color: 'text-rose-500', bg: 'bg-rose-500/20' },

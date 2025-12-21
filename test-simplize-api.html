@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Simplize API</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4">🔬 Test Simplize API</h1>
+        
+        <div class="mb-4">
+            <input type="text" id="symbol" value="KBC" class="bg-slate-700 px-4 py-2 rounded" placeholder="Mã CK">
+            <button onclick="testAPI()" class="bg-emerald-600 px-4 py-2 rounded ml-2">Test API</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-slate-800 p-4 rounded-xl">
+                <h2 class="font-bold mb-2">📊 /summary</h2>
+                <pre id="summaryResult" class="text-xs overflow-auto max-h-96 bg-slate-900 p-2 rounded"></pre>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl">
+                <h2 class="font-bold mb-2">📈 /snapshot</h2>
+                <pre id="snapshotResult" class="text-xs overflow-auto max-h-96 bg-slate-900 p-2 rounded"></pre>
+            </div>
+        </div>
+
+        <div class="mt-4 bg-slate-800 p-4 rounded-xl">
+            <h2 class="font-bold mb-2">🎯 Extracted Financial Data</h2>
+            <div id="extractedData" class="grid grid-cols-4 gap-4"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const symbol = document.getElementById('symbol').value.toUpperCase();
+            
+            // Test /summary endpoint
+            try {
+                const summaryRes = await fetch(`https://api.simplize.vn/api/company/summary/${symbol}`);
+                const summaryData = await summaryRes.json();
+                document.getElementById('summaryResult').textContent = JSON.stringify(summaryData, null, 2);
+                
+                // Extract financial data
+                if (summaryData.data) {
+                    const d = summaryData.data;
+                    const extracted = {
+                        'P/E': d.pe || d.PE || 'N/A',
+                        'P/B': d.pb || d.PB || 'N/A',
+                        'ROE': d.roe || d.ROE || 'N/A',
+                        'ROA': d.roa || d.ROA || 'N/A',
+                        'EPS': d.eps || d.EPS || 'N/A',
+                        'D/E': d.de || d.DE || d.debtToEquity || 'N/A',
+                        'Revenue Growth': d.revenueGrowth || 'N/A',
+                        'Profit Growth': d.profitGrowth || 'N/A'
+                    };
+                    
+                    let html = '';
+                    for (const [key, value] of Object.entries(extracted)) {
+                        html += `<div class="bg-slate-700 p-2 rounded text-center">
+                            <div class="text-xs text-slate-400">${key}</div>
+                            <div class="font-bold text-lg">${typeof value === 'number' ? value.toFixed(2) : value}</div>
+                        </div>`;
+                    }
+                    document.getElementById('extractedData').innerHTML = html;
+                }
+            } catch (e) {
+                document.getElementById('summaryResult').textContent = 'Error: ' + e.message;
+            }
+
+            // Test /snapshot endpoint
+            try {
+                const snapshotRes = await fetch(`https://api.simplize.vn/api/company/snapshot/${symbol}`);
+                const snapshotData = await snapshotRes.json();
+                document.getElementById('snapshotResult').textContent = JSON.stringify(snapshotData, null, 2);
+            } catch (e) {
+                document.getElementById('snapshotResult').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        // Auto test on load
+        testAPI();
+    </script>
+</body>
+</html>

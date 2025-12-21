@@ -6,9 +6,10 @@
 import { 
   getVN100Companies, 
   getAllTechnicalIndicators,
+  getAllSimplizeCompanyData,
   Company,
   TechnicalIndicators,
-  FinancialRatio
+  SimplizeCompanyData
 } from './supabaseClient';
 
 const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
@@ -33,7 +34,7 @@ export interface GuruStrategy {
   id: string;
   name: string;
   title: string;
-  filter: (company: Company, technical: TechnicalIndicators | null, financial: FinancialRatio | null) => {
+  filter: (company: Company, technical: TechnicalIndicators | null, simplize: SimplizeCompanyData | null) => {
     passes: boolean;
     score: number;
     reason: string;
@@ -41,25 +42,13 @@ export interface GuruStrategy {
   };
 }
 
-// Lấy financial ratios cho tất cả companies
-async function getAllFinancialRatios(): Promise<Map<string, FinancialRatio>> {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/financial_ratios?order=year.desc,quarter.desc`, {
-    headers: {
-      'apikey': SUPABASE_SERVICE_KEY,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
-    }
-  });
+// Lấy simplize data cho tất cả companies
+async function getAllSimplizeData(): Promise<Map<string, SimplizeCompanyData>> {
+  const data = await getAllSimplizeCompanyData();
+  const map = new Map<string, SimplizeCompanyData>();
   
-  if (!response.ok) return new Map();
-  
-  const data: FinancialRatio[] = await response.json();
-  const map = new Map<string, FinancialRatio>();
-  
-  // Chỉ lấy record mới nhất cho mỗi symbol
-  data.forEach(ratio => {
-    if (!map.has(ratio.symbol)) {
-      map.set(ratio.symbol, ratio);
-    }
+  data.forEach(item => {
+    map.set(item.symbol, item);
   });
   
   return map;
@@ -71,37 +60,37 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'buffett',
     name: 'Warren Buffett',
     title: 'Đầu tư Giá trị & Hào kinh tế',
-    filter: (company, technical, financial) => {
+    filter: (_company, _technical, simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
       
-      // ROE > 15%
-      const roe = financial?.roe || Math.random() * 25 + 5;
+      // ROE > 15% (Simplize ROE is already in %)
+      const roe = simplize?.roe || Math.random() * 25 + 5;
       metrics['ROE'] = `${roe.toFixed(1)}%`;
       if (roe > 15) {
         score += 15;
         reasons.push('ROE cao');
       }
       
-      // Gross Margin > 30%
-      const grossMargin = financial?.gross_margin || Math.random() * 40 + 10;
-      metrics['Gross Margin'] = `${grossMargin.toFixed(1)}%`;
-      if (grossMargin > 30) {
+      // Use dividend yield as proxy for margin quality
+      const dividendYield = simplize?.dividend_yield || Math.random() * 5;
+      metrics['Cổ tức'] = `${dividendYield.toFixed(1)}%`;
+      if (dividendYield > 2) {
         score += 10;
-        reasons.push('Biên lợi nhuận tốt');
+        reasons.push('Cổ tức tốt');
       }
       
-      // Debt/Equity < 50%
-      const debtToEquity = financial?.debt_to_equity || Math.random() * 80;
-      metrics['D/E'] = `${debtToEquity.toFixed(1)}%`;
-      if (debtToEquity < 50) {
+      // Beta < 1 (low volatility)
+      const beta = simplize?.beta_5y || Math.random() * 1.5 + 0.5;
+      metrics['Beta'] = beta.toFixed(2);
+      if (beta < 1) {
         score += 10;
-        reasons.push('Nợ thấp');
+        reasons.push('Biến động thấp');
       }
       
       // P/E hợp lý (10-25)
-      const pe = financial?.pe_ratio || Math.random() * 20 + 8;
+      const pe = simplize?.pe_ratio || Math.random() * 20 + 8;
       metrics['P/E'] = pe.toFixed(1);
       if (pe >= 10 && pe <= 25) {
         score += 15;
@@ -120,14 +109,14 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'lynch',
     name: 'Peter Lynch',
     title: 'Tăng trưởng hợp lý (GARP)',
-    filter: (company, technical, financial) => {
+    filter: (_company, _technical, simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
       
       // PEG < 1
-      const pe = financial?.pe_ratio || Math.random() * 20 + 8;
-      const epsGrowth = financial?.profit_growth || Math.random() * 30 + 5;
+      const pe = simplize?.pe_ratio || Math.random() * 20 + 8;
+      const epsGrowth = simplize?.net_income_5y_growth || Math.random() * 30 + 5;
       const peg = epsGrowth > 0 ? pe / epsGrowth : 2;
       metrics['PEG'] = peg.toFixed(2);
       if (peg < 1) {
@@ -142,12 +131,12 @@ const GURU_STRATEGIES: GuruStrategy[] = [
         reasons.push('Tăng trưởng EPS tốt');
       }
       
-      // D/E < 35%
-      const debtToEquity = financial?.debt_to_equity || Math.random() * 60;
-      metrics['D/E'] = `${debtToEquity.toFixed(1)}%`;
-      if (debtToEquity < 35) {
+      // Beta < 1.2 (low risk)
+      const beta = simplize?.beta_5y || Math.random() * 1.5 + 0.5;
+      metrics['Beta'] = beta.toFixed(2);
+      if (beta < 1.2) {
         score += 15;
-        reasons.push('Cấu trúc vốn an toàn');
+        reasons.push('Rủi ro thấp');
       }
       
       return {
@@ -162,13 +151,13 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'graham',
     name: 'Benjamin Graham',
     title: 'Cha đẻ Đầu tư Giá trị',
-    filter: (company, technical, financial) => {
+    filter: (_company, _technical, simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
       
       // P/E < 15
-      const pe = financial?.pe_ratio || Math.random() * 20 + 5;
+      const pe = simplize?.pe_ratio || Math.random() * 20 + 5;
       metrics['P/E'] = pe.toFixed(1);
       if (pe < 15) {
         score += 20;
@@ -176,19 +165,19 @@ const GURU_STRATEGIES: GuruStrategy[] = [
       }
       
       // P/B < 1.5
-      const pb = financial?.pb_ratio || Math.random() * 2 + 0.5;
+      const pb = simplize?.pb_ratio || Math.random() * 2 + 0.5;
       metrics['P/B'] = pb.toFixed(2);
       if (pb < 1.5) {
         score += 15;
         reasons.push('P/B hấp dẫn');
       }
       
-      // Current Ratio > 2 (giả lập)
-      const currentRatio = 1.5 + Math.random() * 1.5;
-      metrics['Current Ratio'] = currentRatio.toFixed(2);
-      if (currentRatio > 2) {
+      // Dividend yield > 2%
+      const dividendYield = simplize?.dividend_yield || Math.random() * 5;
+      metrics['Cổ tức'] = `${dividendYield.toFixed(2)}%`;
+      if (dividendYield > 2) {
         score += 15;
-        reasons.push('Thanh khoản tốt');
+        reasons.push('Cổ tức tốt');
       }
       
       return {
@@ -203,13 +192,13 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'canslim',
     name: "William O'Neil",
     title: 'CAN SLIM - Siêu tăng trưởng',
-    filter: (company, technical, financial) => {
+    filter: (_company, technical, simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
       
       // EPS Q/Q > 25%
-      const epsQoQ = financial?.profit_growth || Math.random() * 40 + 10;
+      const epsQoQ = simplize?.net_income_qoq_growth || Math.random() * 40 + 10;
       metrics['EPS Q/Q'] = `+${epsQoQ.toFixed(0)}%`;
       if (epsQoQ > 25) {
         score += 15;
@@ -244,7 +233,7 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'minervini',
     name: 'Mark Minervini',
     title: 'Phù thủy Chứng khoán (VCP)',
-    filter: (company, technical, financial) => {
+    filter: (_company, technical, _simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
@@ -293,13 +282,13 @@ const GURU_STRATEGIES: GuruStrategy[] = [
     id: 'dalio',
     name: 'Ray Dalio',
     title: 'All Weather - Mọi thời tiết',
-    filter: (company, technical, financial) => {
+    filter: (_company, technical, simplize) => {
       let score = 50;
       const reasons: string[] = [];
       const metrics: Record<string, number | string> = {};
       
       // Beta thấp (0.5-1.2)
-      const beta = 0.5 + Math.random() * 1;
+      const beta = simplize?.beta_5y || 0.5 + Math.random() * 1;
       metrics['Beta'] = beta.toFixed(2);
       if (beta >= 0.5 && beta <= 1.2) {
         score += 15;
@@ -376,10 +365,10 @@ export async function syncGuruStocks(): Promise<{
   
   try {
     // Lấy dữ liệu
-    const [companies, technicalIndicators, financialRatios] = await Promise.all([
+    const [companies, technicalIndicators, simplizeDataMap] = await Promise.all([
       getVN100Companies(),
       getAllTechnicalIndicators(),
-      getAllFinancialRatios()
+      getAllSimplizeData()
     ]);
     
     // Tạo map cho technical indicators
@@ -392,9 +381,9 @@ export async function syncGuruStocks(): Promise<{
       
       for (const company of companies) {
         const technical = technicalMap.get(company.symbol) || null;
-        const financial = financialRatios.get(company.symbol) || null;
+        const simplize = simplizeDataMap.get(company.symbol) || null;
         
-        const result = strategy.filter(company, technical, financial);
+        const result = strategy.filter(company, technical, simplize);
         
         if (result.passes) {
           strategyStocks.push({

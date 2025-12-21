@@ -40,7 +40,9 @@ export async function signUp(email: string, password: string, fullName: string):
         data: {
           full_name: fullName,
           plan: 'basic'
-        }
+        },
+        // Tắt xác thực email - user có thể đăng nhập ngay
+        emailRedirectTo: undefined
       }
     });
 
@@ -53,10 +55,21 @@ export async function signUp(email: string, password: string, fullName: string):
       await createUserProfile(data.user.id, email, fullName);
     }
 
+    // Nếu có session nghĩa là không cần xác thực email
+    // User có thể đăng nhập ngay
+    if (data.session) {
+      return { 
+        success: true, 
+        user: data.user || undefined, 
+        session: data.session
+      };
+    }
+
+    // Nếu không có session, cần xác thực email (tùy cấu hình Supabase)
     return { 
       success: true, 
       user: data.user || undefined, 
-      session: data.session || undefined 
+      session: undefined 
     };
   } catch (err) {
     return { success: false, error: 'Đã xảy ra lỗi. Vui lòng thử lại.' };
@@ -193,13 +206,29 @@ export async function updatePassword(newPassword: string): Promise<{ success: bo
 }
 
 // Sign in with Google
-export async function signInWithGoogle(): Promise<void> {
-  await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin
+export async function signInWithGoogle(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
+      }
+    });
+
+    if (error) {
+      console.error('Google sign in error:', error);
+      return { success: false, error: getErrorMessage(error) };
     }
-  });
+
+    return { success: true };
+  } catch (err) {
+    console.error('Google sign in exception:', err);
+    return { success: false, error: 'Không thể đăng nhập bằng Google. Vui lòng thử lại.' };
+  }
 }
 
 // Listen to auth state changes

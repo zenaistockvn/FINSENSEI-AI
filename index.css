@@ -488,3 +488,50 @@
     box-shadow: none !important;
   }
 }
+
+
+/* ============================================
+   HORIZONTAL SCROLLBAR FOR PRESETS
+   ============================================ */
+
+/* Horizontal scrollbar style */
+.custom-scrollbar-horizontal {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184) transparent;
+}
+
+.dark .custom-scrollbar-horizontal {
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar {
+  height: 6px;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184);
+  border-radius: 3px;
+}
+
+.dark .custom-scrollbar-horizontal::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105);
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
+}
+
+.dark .custom-scrollbar-horizontal::-webkit-scrollbar-thumb:hover {
+  background: rgb(51 65 85);
+}
+
+/* Smooth scroll behavior */
+.custom-scrollbar-horizontal {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}

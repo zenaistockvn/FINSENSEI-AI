@@ -14,14 +14,12 @@ import {
   CheckCircle2,
   Loader2,
   RefreshCw,
-  Camera,
   Sparkles,
   ChevronDown,
   ChevronUp,
   AlertTriangle,
   DollarSign,
   BarChart3,
-  Database,
   Zap,
 } from 'lucide-react';
 import {
@@ -32,7 +30,7 @@ import {
   AIStockAnalysisResult,
 } from '../services/aiStockAnalysisService';
 import {
-  getLatestFinancialRatio,
+  getSimplizeCompanyData,
   getTechnicalIndicators,
   getCompanyBySymbol,
   getLatestPrice,
@@ -66,10 +64,10 @@ const AIStockInsight: React.FC<AIStockInsightProps> = ({
 
     try {
       // Lấy dữ liệu cơ bản
-      const [company, price, financials, technicals] = await Promise.all([
+      const [company, price, simplize, technicals] = await Promise.all([
         getCompanyBySymbol(symbol),
         getLatestPrice(symbol),
-        getLatestFinancialRatio(symbol),
+        getSimplizeCompanyData(symbol),
         getTechnicalIndicators(symbol),
       ]);
 
@@ -77,22 +75,22 @@ const AIStockInsight: React.FC<AIStockInsightProps> = ({
         throw new Error('Không tìm thấy dữ liệu cổ phiếu');
       }
 
-      // Build fundamentals object
+      // Build fundamentals object - using Simplize data
       const fundamentals: StockFundamentals = {
         symbol: company.symbol,
-        companyName: company.company_name,
-        industry: company.industry || 'N/A',
-        currentPrice: price.close_price,
-        priceChange: price.close_price - price.open_price,
-        priceChangePercent: ((price.close_price - price.open_price) / price.open_price) * 100,
-        volume: price.volume,
-        pe: financials?.pe_ratio ?? undefined,
-        pb: financials?.pb_ratio ?? undefined,
-        roe: financials?.roe ?? undefined,
-        eps: financials?.eps ?? undefined,
-        debtToEquity: financials?.debt_to_equity ?? undefined,
-        revenueGrowth: financials?.revenue_growth ?? undefined,
-        profitGrowth: financials?.profit_growth ?? undefined,
+        companyName: simplize?.name_vi || company.company_name,
+        industry: simplize?.industry || company.industry || 'N/A',
+        currentPrice: simplize?.price_close || price.close_price,
+        priceChange: simplize?.net_change || (price.close_price - price.open_price),
+        priceChangePercent: simplize?.pct_change || ((price.close_price - price.open_price) / price.open_price) * 100,
+        volume: simplize?.volume || price.volume,
+        pe: simplize?.pe_ratio ?? undefined,
+        pb: simplize?.pb_ratio ?? undefined,
+        roe: simplize?.roe ? simplize.roe / 100 : undefined, // Convert from % to decimal
+        eps: simplize?.eps ?? undefined,
+        debtToEquity: undefined, // Not available in Simplize
+        revenueGrowth: simplize?.revenue_5y_growth ? simplize.revenue_5y_growth / 100 : undefined,
+        profitGrowth: simplize?.net_income_5y_growth ? simplize.net_income_5y_growth / 100 : undefined,
         ma20: technicals?.ma20 ?? undefined,
         ma50: technicals?.ma50 ?? undefined,
         rsi: technicals?.rsi_14 ?? undefined,
@@ -194,27 +192,20 @@ const AIStockInsight: React.FC<AIStockInsightProps> = ({
               </span>
             </h3>
             <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              Powered by GPT-4 Vision
+              Phân tích thông minh bằng AI
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {analysis?.fromCache && (
-            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium
-              ${isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
-              <Database size={10} />
-              Cache
-            </span>
-          )}
           {analysis && renderSentimentBadge(analysis.overallSentiment)}
           <button
             onClick={(e) => {
               e.stopPropagation();
-              runAnalysis(true); // Force refresh
+              runAnalysis(true);
             }}
             disabled={loading}
-            title="Phân tích lại (bỏ qua cache)"
+            title="Phân tích lại"
             className={`p-2 rounded-lg transition-colors
               ${isDark ? 'hover:bg-white/10' : 'hover:bg-slate-100'}
               ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -446,18 +437,10 @@ const AIStockInsight: React.FC<AIStockInsightProps> = ({
                   <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     {new Date(analysis.analysisDate).toLocaleDateString('vi-VN')}
                   </p>
-                  {analysis.fromCache && (
-                    <span className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-blue-400' : 'text-blue-600'}`}>
-                      <Database size={12} />
-                      Từ cache
-                    </span>
-                  )}
-                  {!analysis.fromCache && (
-                    <span className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                      <Zap size={12} />
-                      Mới phân tích
-                    </span>
-                  )}
+                  <span className={`inline-flex items-center gap-1 text-xs ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                    <Zap size={12} />
+                    Phân tích AI
+                  </span>
                 </div>
                 <button
                   onClick={() => runAnalysis(true)}

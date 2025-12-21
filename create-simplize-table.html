@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Tạo Simplize Table & Sync VN30</title>
+    <style>
+        body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #818cf8; text-align: center; }
+        .btn { background: #6366f1; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; }
+        .btn:hover { background: #4f46e5; }
+        .btn:disabled { background: #475569; cursor: not-allowed; }
+        .btn-success { background: #10b981; }
+        .btn-success:hover { background: #059669; }
+        .log { background: #1e293b; padding: 15px; border-radius: 8px; margin-top: 20px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
+        .warning { color: #fbbf24; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin: 20px 0; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+        .stat { background: #0f172a; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 2rem; font-weight: bold; color: #4ade80; }
+        .stat-label { font-size: 0.8rem; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Sync VN30 từ Simplize API</h1>
+        
+        <div class="card">
+            <h3>🔧 Bước 1: Tạo bảng trong Supabase</h3>
+            <button class="btn" onclick="createTable()">🗄️ Tạo Bảng simplize_company_data</button>
+            <button class="btn" onclick="checkTable()">🔍 Kiểm tra Bảng</button>
+        </div>
+        
+        <div class="card">
+            <h3>📥 Bước 2: Sync dữ liệu VN30</h3>
+            <button class="btn btn-success" onclick="syncVN30()" id="btnSync">🚀 Sync VN30 từ Simplize</button>
+            <button class="btn" onclick="clearLog()">🗑️ Xóa Log</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat"><div class="stat-value" id="totalCount">0</div><div class="stat-label">Tổng</div></div>
+            <div class="stat"><div class="stat-value" id="successCount">0</div><div class="stat-label">Thành công</div></div>
+            <div class="stat"><div class="stat-value" id="errorCount">0</div><div class="stat-label">Lỗi</div></div>
+            <div class="stat"><div class="stat-value" id="progress">0%</div><div class="stat-label">Tiến độ</div></div>
+        </div>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+        
+        const headers = {
+            "apikey": SERVICE_KEY,
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        };
+        
+        const VN30 = ["ACB","BCM","BID","BVH","CTG","FPT","GAS","GVR","HDB","HPG","MBB","MSN","MWG","PLX","POW","SAB","SSB","SSI","STB","TCB","TPB","VCB","VHM","VIB","VIC","VJC","VNM","VPB","VRE","SHB"];
+        
+        let stats = { total: 30, success: 0, error: 0 };
+        
+        function log(msg, type = 'info') {
+            const el = document.getElementById('log');
+            el.innerHTML += `<div class="${type}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+        
+        function clearLog() { document.getElementById('log').innerHTML = ''; }
+        
+        function updateStats() {
+            document.getElementById('totalCount').textContent = stats.total;
+            document.getElementById('successCount').textContent = stats.success;
+            document.getElementById('errorCount').textContent = stats.error;
+            document.getElementById('progress').textContent = Math.round((stats.success + stats.error) / stats.total * 100) + '%';
+        }
+        
+        async function createTable() {
+            log('🗄️ Đang tạo bảng simplize_company_data...', 'info');
+            
+            const sql = `
+                CREATE TABLE IF NOT EXISTS simplize_company_data (
+                    id SERIAL PRIMARY KEY,
+                    symbol VARCHAR(10) UNIQUE NOT NULL,
+                    name_vi TEXT, name_en TEXT, stock_exchange VARCHAR(10),
+                    industry TEXT, sector TEXT, website TEXT, logo_url TEXT,
+                    market_cap BIGINT, outstanding_shares BIGINT, free_float_rate DECIMAL(10,2),
+                    price_close DECIMAL(12,2), price_open DECIMAL(12,2), price_high DECIMAL(12,2),
+                    price_low DECIMAL(12,2), price_ceiling DECIMAL(12,2), price_floor DECIMAL(12,2),
+                    price_reference DECIMAL(12,2), net_change DECIMAL(12,2), pct_change DECIMAL(10,2),
+                    volume BIGINT, volume_10d_avg BIGINT,
+                    pe_ratio DECIMAL(10,2), pb_ratio DECIMAL(10,2), eps DECIMAL(12,2),
+                    book_value DECIMAL(12,2), dividend_yield DECIMAL(10,2),
+                    roe DECIMAL(10,2), roa DECIMAL(10,2), beta_5y DECIMAL(10,2),
+                    revenue_5y_growth DECIMAL(10,2), net_income_5y_growth DECIMAL(10,2),
+                    revenue_ltm_growth DECIMAL(10,2), net_income_ltm_growth DECIMAL(10,2),
+                    revenue_qoq_growth DECIMAL(10,2), net_income_qoq_growth DECIMAL(10,2),
+                    price_chg_7d DECIMAL(10,2), price_chg_30d DECIMAL(10,2), price_chg_ytd DECIMAL(10,2),
+                    price_chg_1y DECIMAL(10,2), price_chg_3y DECIMAL(10,2), price_chg_5y DECIMAL(10,2),
+                    valuation_point INTEGER, growth_point INTEGER, performance_point INTEGER,
+                    financial_health_point INTEGER, dividend_point INTEGER,
+                    ta_signal_1d VARCHAR(20), overall_risk_level VARCHAR(20),
+                    quality_valuation VARCHAR(10), company_quality INTEGER,
+                    main_service TEXT, business_overview TEXT, business_strategy TEXT, business_risk TEXT,
+                    watchlist_count INTEGER, no_of_recommendations INTEGER,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                );
+                ALTER TABLE simplize_company_data ENABLE ROW LEVEL SECURITY;
+                DROP POLICY IF EXISTS "Allow all simplize" ON simplize_company_data;
+                CREATE POLICY "Allow all simplize" ON simplize_company_data FOR ALL USING (true) WITH CHECK (true);
+            `;
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ sql })
+                });
+                
+                if (response.ok) {
+                    log('✅ Tạo bảng thành công!', 'success');
+                } else {
+                    log('⚠️ Không thể tạo bảng qua API. Vui lòng chạy SQL trong Supabase Dashboard.', 'warning');
+                    log('📋 Copy SQL từ file: supabase/create-simplize-table.sql', 'info');
+                }
+            } catch (e) {
+                log('⚠️ Vui lòng tạo bảng thủ công trong Supabase Dashboard > SQL Editor', 'warning');
+            }
+        }
+        
+        async function checkTable() {
+            log('🔍 Kiểm tra bảng...', 'info');
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/simplize_company_data?limit=1`, { headers });
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Bảng tồn tại! Có ${data.length} bản ghi`, 'success');
+                } else {
+                    log('❌ Bảng chưa tồn tại. Vui lòng tạo bảng trước.', 'error');
+                }
+            } catch (e) {
+                log(`❌ Lỗi: ${e.message}`, 'error');
+            }
+        }
+        
+        async function fetchSimplize(symbol) {
+            try {
+                const response = await fetch(`https://api.simplize.vn/api/company/summary/${symbol.toLowerCase()}`);
+                const result = await response.json();
+                if (result.status !== 200) return null;
+                
+                const d = result.data;
+                return {
+                    symbol: d.ticker?.toUpperCase() || symbol,
+                    name_vi: d.nameVi, name_en: d.nameEn, stock_exchange: d.stockExchange,
+                    industry: d.industryActivity, sector: d.bcEconomicSectorName,
+                    website: d.website, logo_url: d.imageUrl,
+                    market_cap: d.marketCap, outstanding_shares: d.outstandingSharesValue,
+                    free_float_rate: d.freeFloatRate,
+                    price_close: d.priceClose, price_open: d.priceOpen, price_high: d.priceHigh,
+                    price_low: d.priceLow, price_ceiling: d.priceCeiling, price_floor: d.priceFloor,
+                    price_reference: d.priceReferrance, net_change: d.netChange, pct_change: d.pctChange,
+                    volume: d.volume, volume_10d_avg: d.volume10dAvg,
+                    pe_ratio: d.peRatio, pb_ratio: d.pbRatio, eps: d.epsRatio,
+                    book_value: d.bookValue, dividend_yield: d.dividendYieldCurrent,
+                    roe: d.roe, roa: d.roa, beta_5y: d.beta5y,
+                    revenue_5y_growth: d.revenue5yGrowth, net_income_5y_growth: d.netIncome5yGrowth,
+                    revenue_ltm_growth: d.revenueLtmGrowth, net_income_ltm_growth: d.netIncomeLtmGrowth,
+                    revenue_qoq_growth: d.revenueGrowthQoq, net_income_qoq_growth: d.netIncomeGrowthQoq,
+                    price_chg_7d: d.pricePctChg7d, price_chg_30d: d.pricePctChg30d, price_chg_ytd: d.pricePctChgYtd,
+                    price_chg_1y: d.pricePctChg1y, price_chg_3y: d.pricePctChg3y, price_chg_5y: d.pricePctChg5y,
+                    valuation_point: d.valuationPoint, growth_point: d.growthPoint,
+                    performance_point: d.passPerformancePoint, financial_health_point: d.financialHealthPoint,
+                    dividend_point: d.dividendPoint,
+                    ta_signal_1d: d.taSignal1d, overall_risk_level: d.overallRiskLevel,
+                    quality_valuation: d.qualityValuation, company_quality: d.companyQuality,
+                    main_service: d.mainService, business_overview: d.businessOverall,
+                    business_strategy: d.businessStrategy, business_risk: d.businessRisk,
+                    watchlist_count: d.watchlistCount, no_of_recommendations: d.noOfRecommendations,
+                    updated_at: new Date().toISOString()
+                };
+            } catch (e) {
+                return null;
+            }
+        }
+        
+        async function upsertToSupabase(data) {
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/simplize_company_data`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(data)
+                });
+                return response.ok || response.status === 409;
+            } catch (e) {
+                return false;
+            }
+        }
+        
+        async function syncVN30() {
+            document.getElementById('btnSync').disabled = true;
+            stats = { total: 30, success: 0, error: 0 };
+            updateStats();
+            
+            log('🚀 Bắt đầu sync VN30 từ Simplize API...', 'info');
+            
+            for (let i = 0; i < VN30.length; i++) {
+                const symbol = VN30[i];
+                log(`[${i+1}/30] 📈 ${symbol}...`, 'info');
+                
+                const data = await fetchSimplize(symbol);
+                
+                if (data) {
+                    const ok = await upsertToSupabase(data);
+                    if (ok) {
+                        stats.success++;
+                        log(`  ✅ ${symbol}: ${data.name_vi?.substring(0, 40)}...`, 'success');
+                    } else {
+                        stats.error++;
+                        log(`  ❌ ${symbol}: Lỗi lưu DB`, 'error');
+                    }
+                } else {
+                    stats.error++;
+                    log(`  ❌ ${symbol}: Không có dữ liệu`, 'error');
+                }
+                
+                updateStats();
+                await new Promise(r => setTimeout(r, 300));
+            }
+            
+            log(`🎉 Hoàn thành! ✅ ${stats.success}/30 | ❌ ${stats.error}`, stats.error === 0 ? 'success' : 'warning');
+            document.getElementById('btnSync').disabled = false;
+        }
+    </script>
+</body>
+</html>

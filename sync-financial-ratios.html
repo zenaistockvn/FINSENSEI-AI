@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Financial Ratios - FinSensei</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-2">📊 Sync Financial Ratios</h1>
+        <p class="text-slate-400 mb-6">Đồng bộ dữ liệu chỉ số tài chính (P/E, P/B, ROE, EPS...) cho VN100</p>
+
+        <div class="bg-slate-800 rounded-xl p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">⚙️ Cấu hình</h2>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Supabase URL</label>
+                    <input type="text" id="supabaseUrl" value="https://trbiojajipzpqlnlghtt.supabase.co" 
+                        class="w-full bg-slate-700 rounded px-3 py-2 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-400 mb-1">Supabase Service Key</label>
+                    <input type="password" id="supabaseKey" placeholder="Nhập service_role key"
+                        class="w-full bg-slate-700 rounded px-3 py-2 text-sm">
+                </div>
+            </div>
+            <button onclick="startSync()" id="syncBtn"
+                class="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-lg font-medium">
+                🚀 Bắt đầu Sync
+            </button>
+        </div>
+
+        <div class="bg-slate-800 rounded-xl p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">📈 Tiến trình</h2>
+            <div class="mb-4">
+                <div class="flex justify-between text-sm mb-1">
+                    <span id="progressText">Chưa bắt đầu</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-3">
+                    <div id="progressBar" class="bg-emerald-500 h-3 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4 text-center">
+                <div class="bg-slate-700 rounded-lg p-3">
+                    <div id="totalCount" class="text-2xl font-bold text-cyan-400">0</div>
+                    <div class="text-xs text-slate-400">Tổng mã</div>
+                </div>
+                <div class="bg-slate-700 rounded-lg p-3">
+                    <div id="successCount" class="text-2xl font-bold text-emerald-400">0</div>
+                    <div class="text-xs text-slate-400">Thành công</div>
+                </div>
+                <div class="bg-slate-700 rounded-lg p-3">
+                    <div id="errorCount" class="text-2xl font-bold text-rose-400">0</div>
+                    <div class="text-xs text-slate-400">Lỗi</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 rounded-xl p-6">
+            <h2 class="text-xl font-bold mb-4">📋 Log</h2>
+            <div id="logContainer" class="bg-slate-900 rounded-lg p-4 h-96 overflow-y-auto font-mono text-xs space-y-1">
+                <div class="text-slate-500">Sẵn sàng sync...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const VN100_SYMBOLS = [
+            'ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG',
+            'MBB', 'MSN', 'MWG', 'NVL', 'PDR', 'PLX', 'POW', 'SAB', 'SSI', 'STB',
+            'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE',
+            'BSR', 'BMP', 'BWE', 'CII', 'CMG', 'DBC', 'DCM', 'DGC', 'DGW', 'DIG',
+            'DPM', 'DXG', 'EIB', 'EVF', 'FRT', 'GEX', 'GMD', 'HAG', 'HCM', 'HDC',
+            'HDG', 'HNG', 'HSG', 'HT1', 'IMP', 'KBC', 'KDC', 'KDH', 'KOS', 'LPB',
+            'MSB', 'NAB', 'NLG', 'NT2', 'OCB', 'PAN', 'PC1', 'PHR', 'PNJ', 'PPC',
+            'PVD', 'PVS', 'PVT', 'REE', 'SBT', 'SCS', 'SHB', 'SHS', 'SSB', 'TCH',
+            'VCI', 'VGC', 'VHC', 'VIX', 'VND', 'VOS', 'VPI', 'VTP', 'ANV', 'APH',
+            'ASM', 'BAF', 'CTR', 'CSV', 'DHC', 'DRC', 'FCN', 'FTS', 'HAH', 'HHV'
+        ];
+
+        let supabaseUrl = '';
+        let supabaseKey = '';
+        let successCount = 0;
+        let errorCount = 0;
+
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const colors = { info: 'text-slate-300', success: 'text-emerald-400', error: 'text-rose-400', warning: 'text-amber-400' };
+            const time = new Date().toLocaleTimeString('vi-VN');
+            container.innerHTML += `<div class="${colors[type]}">[${time}] ${message}</div>`;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressBar').style.width = `${percent}%`;
+            document.getElementById('progressPercent').textContent = `${percent}%`;
+            document.getElementById('progressText').textContent = `Đang xử lý ${current}/${total}`;
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('errorCount').textContent = errorCount;
+        }
+
+        // Fetch from Simplize API (reliable source)
+        async function fetchFromSimplize(symbol) {
+            try {
+                const url = `https://simplize.vn/api/company/snapshot/${symbol}`;
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                const data = await response.json();
+                return data.data;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Fetch from Fireant API
+        async function fetchFromFireant(symbol) {
+            try {
+                const url = `https://restv2.fireant.vn/symbols/${symbol}/fundamental`;
+                const response = await fetch(url, {
+                    headers: { 'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4QkZwdEVvSSJ9.eyJpc3MiOiJGaXJlYW50IiwiYXVkIjoiRmlyZWFudCIsImV4cCI6MTk0NjYxMjIyMSwibmJmIjoxNjMxMjUyMjIxLCJpYXQiOjE2MzEyNTIyMjEsInN1YiI6IjEifQ.fake' }
+                });
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Fetch from TCBS API
+        async function fetchFromTCBS(symbol) {
+            try {
+                const url = `https://apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/${symbol}/overview`;
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                return await response.json();
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Fetch from SSI API
+        async function fetchFromSSI(symbol) {
+            try {
+                const url = `https://iboard.ssi.com.vn/dchart/api/1.1/defaultSettings?code=${symbol}`;
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                const result = await response.json();
+                return result.data;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // Main fetch function - try multiple sources
+        async function fetchFinancialData(symbol) {
+            const currentYear = new Date().getFullYear();
+            const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
+
+            // Try TCBS first (most reliable)
+            let data = await fetchFromTCBS(symbol);
+            if (data && (data.pe || data.pb || data.roe)) {
+                return {
+                    symbol: symbol,
+                    year: currentYear,
+                    quarter: currentQuarter,
+                    pe_ratio: data.pe || null,
+                    pb_ratio: data.pb || null,
+                    roe: data.roe ? data.roe / 100 : null,
+                    roa: data.roa ? data.roa / 100 : null,
+                    eps: data.eps || null,
+                    bvps: data.bvps || null,
+                    debt_to_equity: data.debtOnEquity || null,
+                    revenue_growth: data.revenueGrowth ? data.revenueGrowth / 100 : null,
+                    profit_growth: data.netProfitGrowth ? data.netProfitGrowth / 100 : null,
+                    gross_margin: data.grossProfitMargin ? data.grossProfitMargin / 100 : null,
+                    net_margin: data.netProfitMargin ? data.netProfitMargin / 100 : null,
+                    source: 'TCBS'
+                };
+            }
+
+            // Try SSI
+            data = await fetchFromSSI(symbol);
+            if (data && (data.pe || data.pb)) {
+                return {
+                    symbol: symbol,
+                    year: currentYear,
+                    quarter: currentQuarter,
+                    pe_ratio: data.pe || null,
+                    pb_ratio: data.pb || null,
+                    roe: data.roe || null,
+                    roa: data.roa || null,
+                    eps: data.eps || null,
+                    bvps: data.bookValue || null,
+                    debt_to_equity: data.de || null,
+                    revenue_growth: null,
+                    profit_growth: null,
+                    gross_margin: null,
+                    net_margin: null,
+                    source: 'SSI'
+                };
+            }
+
+            return null;
+        }
+
+        async function saveToSupabase(record) {
+            if (!record) return false;
+
+            const payload = {
+                symbol: record.symbol,
+                year: record.year,
+                quarter: record.quarter,
+                pe_ratio: record.pe_ratio,
+                pb_ratio: record.pb_ratio,
+                roe: record.roe,
+                roa: record.roa,
+                eps: record.eps,
+                bvps: record.bvps,
+                debt_to_equity: record.debt_to_equity,
+                revenue_growth: record.revenue_growth,
+                profit_growth: record.profit_growth,
+                gross_margin: record.gross_margin,
+                net_margin: record.net_margin,
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                const response = await fetch(`${supabaseUrl}/rest/v1/financial_ratios`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': supabaseKey,
+                        'Authorization': `Bearer ${supabaseKey}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'resolution=merge-duplicates'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                return response.ok;
+            } catch (error) {
+                console.error('Save error:', error);
+                return false;
+            }
+        }
+
+        async function startSync() {
+            supabaseUrl = document.getElementById('supabaseUrl').value;
+            supabaseKey = document.getElementById('supabaseKey').value;
+
+            if (!supabaseKey) {
+                alert('Vui lòng nhập Supabase Service Key!');
+                return;
+            }
+
+            document.getElementById('syncBtn').disabled = true;
+            document.getElementById('syncBtn').textContent = '⏳ Đang sync...';
+            document.getElementById('logContainer').innerHTML = '';
+            successCount = 0;
+            errorCount = 0;
+
+            log('🚀 Bắt đầu sync financial ratios...', 'info');
+            log(`📊 Tổng số mã: ${VN100_SYMBOLS.length}`, 'info');
+            log('📡 Nguồn dữ liệu: TCBS, SSI', 'info');
+
+            for (let i = 0; i < VN100_SYMBOLS.length; i++) {
+                const symbol = VN100_SYMBOLS[i];
+                updateProgress(i + 1, VN100_SYMBOLS.length);
+
+                try {
+                    log(`📈 Đang lấy dữ liệu ${symbol}...`, 'info');
+                    
+                    const data = await fetchFinancialData(symbol);
+                    
+                    if (data) {
+                        const saved = await saveToSupabase(data);
+                        if (saved) {
+                            successCount++;
+                            log(`✅ ${symbol}: P/E=${data.pe_ratio?.toFixed(1) || 'N/A'}, P/B=${data.pb_ratio?.toFixed(1) || 'N/A'}, ROE=${data.roe ? (data.roe*100).toFixed(1)+'%' : 'N/A'} [${data.source}]`, 'success');
+                        } else {
+                            errorCount++;
+                            log(`❌ ${symbol}: Lỗi lưu database`, 'error');
+                        }
+                    } else {
+                        errorCount++;
+                        log(`⚠️ ${symbol}: Không lấy được dữ liệu từ API`, 'warning');
+                    }
+
+                    await new Promise(r => setTimeout(r, 300));
+                } catch (error) {
+                    errorCount++;
+                    log(`❌ ${symbol}: ${error.message}`, 'error');
+                }
+            }
+
+            log('', 'info');
+            log('═══════════════════════════════════════', 'info');
+            log(`🎉 Hoàn thành! Thành công: ${successCount}, Lỗi: ${errorCount}`, 'success');
+            
+            document.getElementById('syncBtn').disabled = false;
+            document.getElementById('syncBtn').textContent = '🚀 Bắt đầu Sync';
+        }
+    </script>
+</body>
+</html>

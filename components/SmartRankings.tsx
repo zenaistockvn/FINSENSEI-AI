@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BarChart2, TrendingUp } from 'lucide-react';
 import { RankingItem } from '../types';
 import { getTopMovers, getVN100Companies, StockPrice, Company } from '../services/supabaseClient';
 
@@ -21,9 +22,9 @@ const SmartRankings: React.FC = () => {
           .slice(0, 5)
           .map((stock: StockPrice, index: number) => ({
             ticker: stock.symbol,
-            price: stock.close_price, // Price already in VND
-            volPercent: Math.round((stock.volume / 1000000) * 10) / 10, // Volume in millions
-            rsScore: 95 - index * 2 // Simulated RS score based on volume rank
+            price: stock.close_price,
+            volPercent: Math.round((stock.volume / 1000000) * 10) / 10,
+            rsScore: 95 - index * 2
           }));
         
         setRankings(formatted.length > 0 ? formatted : getDefaultRankings());
@@ -38,23 +39,30 @@ const SmartRankings: React.FC = () => {
   }, []);
 
   const getDefaultRankings = (): RankingItem[] => [
-    { ticker: 'HPG', price: 28100, volPercent: 3.1, rsScore: 92 },
-    { ticker: 'VIC', price: 45600, volPercent: 1.5, rsScore: 89 },
-    { ticker: 'TCB', price: 33200, volPercent: 2.0, rsScore: 88 },
-    { ticker: 'VHM', price: 42000, volPercent: 1.0, rsScore: 87 },
-    { ticker: 'ACB', price: 27500, volPercent: 2.5, rsScore: 86 },
+    { ticker: 'SHB', price: 16150, volPercent: 47.5, rsScore: 95 },
+    { ticker: 'SSI', price: 30800, volPercent: 42.6, rsScore: 93 },
+    { ticker: 'DGC', price: 70200, volPercent: 36.7, rsScore: 91 },
+    { ticker: 'HPG', price: 26700, volPercent: 29.6, rsScore: 89 },
+    { ticker: 'VND', price: 19850, volPercent: 26.4, rsScore: 87 },
   ];
+
+  const getScoreColor = (score: number) => {
+    if (score >= 90) return 'bg-emerald-500 text-white';
+    if (score >= 80) return 'bg-cyan-500 text-white';
+    if (score >= 70) return 'bg-amber-500 text-white';
+    return 'bg-slate-500 text-white';
+  };
 
   if (loading) {
     return (
-      <div className="glass-panel rounded-2xl p-6 col-span-1 border-t border-purple-500/20">
-        <div className="mb-4">
-          <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-32 mb-2 animate-pulse"></div>
-          <div className="h-6 bg-slate-200 dark:bg-slate-700 rounded w-40 animate-pulse"></div>
+      <div className="glass-panel rounded-2xl p-5 border-t border-purple-500/20">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 animate-pulse"></div>
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-40 animate-pulse"></div>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-10 bg-slate-200 dark:bg-slate-700 rounded animate-pulse"></div>
+            <div key={i} className="h-12 bg-slate-200 dark:bg-slate-700 rounded-lg animate-pulse"></div>
           ))}
         </div>
       </div>
@@ -62,40 +70,57 @@ const SmartRankings: React.FC = () => {
   }
 
   return (
-    <div className="glass-panel rounded-2xl p-6 col-span-1 border-t border-purple-500/20 shadow-[0_0_20px_rgba(168,85,247,0.05)]">
-      <div className="mb-4">
-        <p className="text-slate-500 dark:text-slate-400 text-xs mb-1">
-          Bảng xếp hạng thông minh
-          <span className="ml-2 text-emerald-500">● Live</span>
-        </p>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white">Top Cổ Phiếu Khối Lượng</h3>
+    <div className="glass-panel rounded-2xl p-5 border-t border-purple-500/20 shadow-[0_0_20px_rgba(168,85,247,0.05)]">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+            <BarChart2 size={16} className="text-purple-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Top Cổ Phiếu Khối Lượng</h3>
+          </div>
+        </div>
+        <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+          Live
+        </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-            <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700/50 text-slate-500 dark:text-slate-400 text-sm">
-                    <th className="py-3 font-medium">Mã</th>
-                    <th className="py-3 font-medium text-right">Giá</th>
-                    <th className="py-3 font-medium text-right">KL (tr)</th>
-                    <th className="py-3 font-medium text-right">Điểm RS</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rankings.map((stock, index) => (
-                    <tr key={stock.ticker} className="border-b border-slate-100 dark:border-slate-800/50 text-sm hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
-                        <td className="py-4 font-bold text-slate-900 dark:text-white">{stock.ticker}</td>
-                        <td className="py-4 text-right text-slate-700 dark:text-slate-200">{stock.price.toLocaleString()}</td>
-                        <td className="py-4 text-right text-emerald-500 dark:text-emerald-400">{stock.volPercent}M</td>
-                        <td className="py-4 text-right">
-                            <span className="inline-block px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-white text-xs font-bold">
-                                {stock.rsScore}
-                            </span>
-                        </td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
+      {/* Table Header */}
+      <div className="grid grid-cols-4 gap-2 px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/50">
+        <span>Mã</span>
+        <span className="text-right">Giá</span>
+        <span className="text-right">KL (tr)</span>
+        <span className="text-right">Điểm RS</span>
+      </div>
+
+      {/* Rankings List */}
+      <div className="divide-y divide-slate-100 dark:divide-slate-800/50">
+        {rankings.map((stock, index) => (
+          <div 
+            key={stock.ticker} 
+            className="grid grid-cols-4 gap-2 px-3 py-3 items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-colors rounded-lg cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 w-4">{index + 1}</span>
+              <span className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-purple-500 transition-colors">
+                {stock.ticker}
+              </span>
+            </div>
+            <span className="text-right text-sm text-slate-700 dark:text-slate-300">
+              {stock.price.toLocaleString()}
+            </span>
+            <span className="text-right text-sm text-emerald-500 font-medium">
+              {stock.volPercent}M
+            </span>
+            <div className="flex justify-end">
+              <span className={`inline-flex items-center justify-center w-8 h-6 rounded-md text-[11px] font-bold ${getScoreColor(stock.rsScore)}`}>
+                {stock.rsScore}
+              </span>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

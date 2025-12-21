@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Minus, Activity, Zap, AlertTriangle, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Activity, Zap, AlertTriangle } from 'lucide-react';
 
 interface MarketSentimentGaugeProps {
   isDark?: boolean;
@@ -24,64 +24,48 @@ const MarketSentimentGauge: React.FC<MarketSentimentGaugeProps> = ({ isDark = tr
 
   useEffect(() => {
     const calculateSentiment = () => {
-      // In real app, this would come from market data analysis
-      const score = Math.floor(Math.random() * 40) + 35; // 35-75 range for demo
+      const score = Math.floor(Math.random() * 40) + 35;
       
       const getSentimentData = (score: number): SentimentData => {
         if (score <= 20) {
           return {
-            score,
-            level: 'extreme_fear',
-            label: 'Cực kỳ Sợ hãi',
+            score, level: 'extreme_fear', label: 'Cực kỳ Sợ hãi',
             description: 'Thị trường hoảng loạn',
             advice: 'Cơ hội mua vào cho nhà đầu tư dài hạn',
-            color: 'text-rose-500',
-            bgColor: 'from-rose-500 to-rose-600',
-            icon: <AlertTriangle size={18} />
+            color: 'text-rose-500', bgColor: 'from-rose-500 to-rose-600',
+            icon: <AlertTriangle size={16} />
           };
         } else if (score <= 40) {
           return {
-            score,
-            level: 'fear',
-            label: 'Sợ hãi',
+            score, level: 'fear', label: 'Sợ hãi',
             description: 'Nhà đầu tư thận trọng',
             advice: 'Xem xét tích lũy dần các cổ phiếu tốt',
-            color: 'text-orange-500',
-            bgColor: 'from-orange-500 to-orange-600',
-            icon: <TrendingDown size={18} />
+            color: 'text-orange-500', bgColor: 'from-orange-500 to-orange-600',
+            icon: <TrendingDown size={16} />
           };
         } else if (score <= 60) {
           return {
-            score,
-            level: 'neutral',
-            label: 'Trung lập',
+            score, level: 'neutral', label: 'Trung lập',
             description: 'Thị trường cân bằng',
             advice: 'Giữ vững chiến lược đầu tư hiện tại',
-            color: 'text-amber-500',
-            bgColor: 'from-amber-500 to-amber-600',
-            icon: <Minus size={18} />
+            color: 'text-amber-500', bgColor: 'from-amber-500 to-amber-600',
+            icon: <Minus size={16} />
           };
         } else if (score <= 80) {
           return {
-            score,
-            level: 'greed',
-            label: 'Tham lam',
+            score, level: 'greed', label: 'Tham lam',
             description: 'Nhà đầu tư lạc quan',
             advice: 'Cân nhắc chốt lời một phần',
-            color: 'text-emerald-500',
-            bgColor: 'from-emerald-500 to-emerald-600',
-            icon: <TrendingUp size={18} />
+            color: 'text-emerald-500', bgColor: 'from-emerald-500 to-emerald-600',
+            icon: <TrendingUp size={16} />
           };
         } else {
           return {
-            score,
-            level: 'extreme_greed',
-            label: 'Cực kỳ Tham lam',
+            score, level: 'extreme_greed', label: 'Cực kỳ Tham lam',
             description: 'Thị trường quá nóng',
             advice: 'Cẩn thận, có thể điều chỉnh',
-            color: 'text-green-400',
-            bgColor: 'from-green-400 to-green-500',
-            icon: <Zap size={18} />
+            color: 'text-green-400', bgColor: 'from-green-400 to-green-500',
+            icon: <Zap size={16} />
           };
         }
       };
@@ -97,9 +81,12 @@ const MarketSentimentGauge: React.FC<MarketSentimentGaugeProps> = ({ isDark = tr
 
   if (loading || !sentiment) {
     return (
-      <div className="glass-panel rounded-2xl p-6 animate-pulse">
-        <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-40 mb-4"></div>
-        <div className="h-40 bg-slate-200 dark:bg-slate-700 rounded"></div>
+      <div className="glass-panel rounded-2xl p-5 border-t border-indigo-500/20 animate-pulse">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-slate-700"></div>
+          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-32"></div>
+        </div>
+        <div className="h-32 bg-slate-200 dark:bg-slate-700 rounded-xl"></div>
       </div>
     );
   }
@@ -107,35 +94,31 @@ const MarketSentimentGauge: React.FC<MarketSentimentGaugeProps> = ({ isDark = tr
   const needleRotation = (sentiment.score / 100) * 180 - 90;
 
   return (
-    <div className="glass-panel rounded-2xl p-6 border-t border-indigo-500/20 shadow-[0_0_30px_rgba(99,102,241,0.08)] relative overflow-hidden">
+    <div className="glass-panel rounded-2xl p-5 border-t border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.05)] relative overflow-hidden">
       {/* Background decoration */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-500/10 to-violet-500/10 rounded-full blur-2xl pointer-events-none"></div>
+      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-violet-500/10 rounded-full blur-2xl pointer-events-none"></div>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-5 relative z-10">
+      <div className="flex items-center justify-between mb-4 relative z-10">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center">
             <Activity size={16} className="text-indigo-500" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Tâm lý Thị trường
-            </h3>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400">
-              Fear & Greed Index
-            </p>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">Tâm lý Thị trường</h3>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400">Fear & Greed Index</p>
           </div>
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400">
-          <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+        <span className="flex items-center gap-1 text-[10px] text-emerald-500">
+          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
           Live
-        </div>
+        </span>
       </div>
 
       {/* Gauge Container */}
       <div className="relative flex flex-col items-center">
         {/* Semi-circle gauge */}
-        <div className="relative w-48 h-24 overflow-hidden">
+        <div className="relative w-44 h-22 overflow-hidden">
           <svg viewBox="0 0 100 50" className="w-full h-full">
             <defs>
               <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -145,52 +128,24 @@ const MarketSentimentGauge: React.FC<MarketSentimentGaugeProps> = ({ isDark = tr
                 <stop offset="75%" stopColor="#22c55e" />
                 <stop offset="100%" stopColor="#10b981" />
               </linearGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                <feMerge>
-                  <feMergeNode in="coloredBlur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
             </defs>
             
             {/* Background track */}
-            <path
-              d="M 8 50 A 42 42 0 0 1 92 50"
-              fill="none"
-              stroke={isDark ? '#1e293b' : '#e2e8f0'}
-              strokeWidth="10"
-              strokeLinecap="round"
-            />
+            <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke={isDark ? '#1e293b' : '#e2e8f0'} strokeWidth="8" strokeLinecap="round" />
             
             {/* Colored arc */}
-            <path
-              d="M 8 50 A 42 42 0 0 1 92 50"
-              fill="none"
-              stroke="url(#gaugeGradient)"
-              strokeWidth="10"
-              strokeLinecap="round"
-              filter="url(#glow)"
-            />
+            <path d="M 8 50 A 42 42 0 0 1 92 50" fill="none" stroke="url(#gaugeGradient)" strokeWidth="8" strokeLinecap="round" />
 
             {/* Tick marks */}
             {[0, 25, 50, 75, 100].map((tick, i) => {
               const angle = (tick / 100) * 180 - 180;
               const rad = (angle * Math.PI) / 180;
-              const x1 = 50 + 35 * Math.cos(rad);
-              const y1 = 50 + 35 * Math.sin(rad);
-              const x2 = 50 + 30 * Math.cos(rad);
-              const y2 = 50 + 30 * Math.sin(rad);
+              const x1 = 50 + 33 * Math.cos(rad);
+              const y1 = 50 + 33 * Math.sin(rad);
+              const x2 = 50 + 28 * Math.cos(rad);
+              const y2 = 50 + 28 * Math.sin(rad);
               return (
-                <line
-                  key={i}
-                  x1={x1}
-                  y1={y1}
-                  x2={x2}
-                  y2={y2}
-                  stroke={isDark ? '#475569' : '#94a3b8'}
-                  strokeWidth="1"
-                />
+                <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={isDark ? '#475569' : '#94a3b8'} strokeWidth="1" />
               );
             })}
           </svg>
@@ -198,48 +153,37 @@ const MarketSentimentGauge: React.FC<MarketSentimentGaugeProps> = ({ isDark = tr
           {/* Needle */}
           <div 
             className="absolute bottom-0 left-1/2 origin-bottom transition-transform duration-1000 ease-out"
-            style={{ 
-              transform: `translateX(-50%) rotate(${needleRotation}deg)`,
-              width: '3px',
-              height: '40px'
-            }}
+            style={{ transform: `translateX(-50%) rotate(${needleRotation}deg)`, width: '2px', height: '36px' }}
           >
             <div className={`w-full h-full bg-gradient-to-t ${sentiment.bgColor} rounded-full shadow-lg`}></div>
-            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-slate-900 rounded-full border-2 border-indigo-500 shadow-lg"></div>
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white dark:bg-slate-900 rounded-full border-2 border-indigo-500"></div>
           </div>
         </div>
 
         {/* Score & Label */}
-        <div className="mt-4 text-center">
-          <div className={`text-4xl font-bold ${sentiment.color} mb-1`}>
-            {sentiment.score}
-          </div>
-          <div className={`flex items-center justify-center gap-2 ${sentiment.color} mb-1`}>
+        <div className="mt-3 text-center">
+          <div className={`text-3xl font-bold ${sentiment.color}`}>{sentiment.score}</div>
+          <div className={`flex items-center justify-center gap-1.5 ${sentiment.color} mt-1`}>
             {sentiment.icon}
             <span className="text-sm font-bold">{sentiment.label}</span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {sentiment.description}
-          </p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{sentiment.description}</p>
         </div>
 
         {/* Scale labels */}
-        <div className="flex justify-between w-full mt-4 px-1">
-          <span className="text-[10px] text-rose-500 font-semibold">0</span>
+        <div className="flex justify-between w-full mt-3 px-2">
+          <span className="text-[10px] text-rose-500 font-medium">0</span>
           <span className="text-[10px] text-orange-500 font-medium">25</span>
           <span className="text-[10px] text-amber-500 font-medium">50</span>
           <span className="text-[10px] text-emerald-500 font-medium">75</span>
-          <span className="text-[10px] text-green-500 font-semibold">100</span>
+          <span className="text-[10px] text-green-500 font-medium">100</span>
         </div>
 
         {/* Advice Box */}
-        <div className="w-full mt-4 p-3 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
-          <div className="flex items-start gap-2">
-            <Info size={14} className={`${sentiment.color} flex-shrink-0 mt-0.5`} />
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {sentiment.advice}
-            </p>
-          </div>
+        <div className="w-full mt-3 p-2.5 rounded-lg bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200/50 dark:border-slate-700/50">
+          <p className="text-[11px] text-slate-600 dark:text-slate-300 text-center">
+            {sentiment.advice}
+          </p>
         </div>
       </div>
     </div>

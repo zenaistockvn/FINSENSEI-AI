@@ -44,20 +44,20 @@ import {
   getStockPrices,
   getCompanyBySymbol,
   searchCompanies,
-  getLatestFinancialRatio,
   getStockNews,
   getAIAnalysis,
   getRiskAnalysis,
   getTradingStrategy,
   getBrokerRecommendations,
+  getSimplizeCompanyData,
   Company,
   StockPrice,
-  FinancialRatio,
   StockNews,
   AIAnalysis,
   RiskAnalysis,
   TradingStrategy,
   BrokerRecommendation,
+  SimplizeCompanyData,
 } from '../services/supabaseClient';
 import AIStockInsight from './AIStockInsight';
 import TradingViewChart from './TradingViewChart';
@@ -1107,10 +1107,8 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [chartData, setChartData] = useState<CandlestickData[]>([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [financialRatio, setFinancialRatio] = useState<FinancialRatio | null>(
-    null
-  );
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
+  const [simplizeData, setSimplizeData] = useState<SimplizeCompanyData | null>(null);
 
   // AI Analysis states
   const [aiAnalysis, setAIAnalysis] = useState<AIAnalysis | null>(null);
@@ -1135,16 +1133,18 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   useEffect(() => {
     const fetchAnalysisData = async () => {
       try {
-        const [ai, risk, strategy, brokers] = await Promise.all([
+        const [ai, risk, strategy, brokers, simplize] = await Promise.all([
           getAIAnalysis(selectedSymbol),
           getRiskAnalysis(selectedSymbol),
           getTradingStrategy(selectedSymbol),
           getBrokerRecommendations(selectedSymbol),
+          getSimplizeCompanyData(selectedSymbol),
         ]);
         setAIAnalysis(ai);
         setRiskAnalysis(risk);
         setTradingStrategy(strategy);
         setBrokerRecommendations(brokers);
+        setSimplizeData(simplize);
       } catch (error) {
         console.error('Error fetching analysis data:', error);
       }
@@ -1216,13 +1216,8 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
     const fetchStockData = async () => {
       setLoading(true);
       try {
-        // Get company info and financial ratios
-        const [company, ratio] = await Promise.all([
-          getCompanyBySymbol(selectedSymbol),
-          getLatestFinancialRatio(selectedSymbol)
-        ]);
-        
-        setFinancialRatio(ratio);
+        // Get company info
+        const company = await getCompanyBySymbol(selectedSymbol);
         
         // Get price history
         const days = timeframe === '1W' ? 7 : timeframe === '1M' ? 30 : timeframe === '3M' ? 90 : timeframe === '6M' ? 180 : timeframe === '1Y' ? 365 : timeframe === '2Y' ? 730 : 60;
@@ -1397,81 +1392,23 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             </div>
           </div>
 
-          {/* Quick Stats - Enhanced UI */}
-          <div className="hidden md:flex items-center gap-2 flex-wrap">
-            {/* Vốn hóa */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-              <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold">Vốn hóa</span>
-              <span className="text-xs text-slate-900 dark:text-white font-bold">
-                {stockInfo?.marketCap ? `${(stockInfo.marketCap / 1000000000000).toFixed(1)}T` : '--'}
-              </span>
+          {/* News Sentiment Widget - Moved here */}
+          <div className="hidden md:flex items-center gap-3 bg-white dark:bg-slate-800/30 rounded-xl px-4 py-2 border border-slate-200 dark:border-white/5">
+            <div className="flex items-center gap-1.5">
+              <Newspaper size={14} className="text-slate-400" />
+              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Cảm xúc Tin tức</span>
             </div>
-            
-            {/* Khối lượng */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-              <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase font-bold">KL</span>
-              <span className="text-xs text-slate-900 dark:text-white font-bold">
-                {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(2)}M` : '--'}
-              </span>
+            <div className="flex items-center gap-2 flex-1">
+              <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full flex overflow-hidden max-w-[120px]">
+                <div className="w-[70%] bg-emerald-500 h-full"></div>
+                <div className="w-[10%] bg-slate-400 h-full"></div>
+                <div className="w-[20%] bg-rose-500 h-full"></div>
+              </div>
+              <span className="text-xs font-bold text-emerald-500">Tích cực</span>
             </div>
-            
-            {/* Cao nhất */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-200 dark:border-emerald-500/30">
-              <span className="text-[9px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">Cao</span>
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                {chartData.length > 0 ? Math.max(...chartData.map(d => d.high)).toLocaleString('vi-VN') : '--'}
-              </span>
-            </div>
-            
-            {/* Thấp nhất */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 rounded-lg border border-rose-200 dark:border-rose-500/30">
-              <span className="text-[9px] text-rose-600 dark:text-rose-400 uppercase font-bold">Thấp</span>
-              <span className="text-xs text-rose-600 dark:text-rose-400 font-bold">
-                {chartData.length > 0 ? Math.min(...chartData.map(d => d.low)).toLocaleString('vi-VN') : '--'}
-              </span>
-            </div>
-            
-            {/* Trung bình */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-200 dark:border-indigo-500/30">
-              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 uppercase font-bold">TB</span>
-              <span className="text-xs text-indigo-600 dark:text-indigo-400 font-bold">
-                {chartData.length > 0 ? Math.round(chartData.reduce((sum, d) => sum + d.close, 0) / chartData.length).toLocaleString('vi-VN') : '--'}
-              </span>
-            </div>
-
-            {/* Divider */}
-            <div className="h-8 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
-            
-            {/* P/E */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-purple-50 dark:bg-purple-500/10 rounded-lg border border-purple-200 dark:border-purple-500/30">
-              <span className="text-[9px] text-purple-600 dark:text-purple-400 uppercase font-bold">P/E</span>
-              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">
-                {financialRatio?.pe_ratio ? financialRatio.pe_ratio.toFixed(1) : '--'}
-              </span>
-            </div>
-            
-            {/* P/B */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-purple-50 dark:bg-purple-500/10 rounded-lg border border-purple-200 dark:border-purple-500/30">
-              <span className="text-[9px] text-purple-600 dark:text-purple-400 uppercase font-bold">P/B</span>
-              <span className="text-xs text-purple-600 dark:text-purple-400 font-bold">
-                {financialRatio?.pb_ratio ? financialRatio.pb_ratio.toFixed(2) : '--'}
-              </span>
-            </div>
-            
-            {/* ROE */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/30">
-              <span className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold">ROE</span>
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
-                {financialRatio?.roe ? `${(financialRatio.roe * 100).toFixed(1)}%` : '--'}
-              </span>
-            </div>
-            
-            {/* EPS */}
-            <div className="flex flex-col items-center px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 rounded-lg border border-amber-200 dark:border-amber-500/30">
-              <span className="text-[9px] text-amber-600 dark:text-amber-400 uppercase font-bold">EPS</span>
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">
-                {financialRatio?.eps ? Math.round(financialRatio.eps).toLocaleString('vi-VN') : '--'}
-              </span>
+            <div className="flex gap-3 text-[10px] text-slate-500">
+              <span>70% Bull</span>
+              <span>20% Bear</span>
             </div>
           </div>
         </div>
@@ -1608,28 +1545,6 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
         {/* Right Sidebar - Fundamentals */}
         <div className="lg:col-span-3 flex flex-col gap-2 h-[600px]">
-          {/* News Sentiment Widget */}
-          <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5 flex flex-col gap-2 shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <Newspaper size={14} className="text-slate-400" />
-                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Cảm xúc Tin tức</span>
-              </div>
-              <span className="text-xs font-bold text-emerald-500">Tích cực</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full flex overflow-hidden">
-                <div className="w-[70%] bg-emerald-500 h-full"></div>
-                <div className="w-[10%] bg-slate-400 h-full"></div>
-                <div className="w-[20%] bg-rose-500 h-full"></div>
-              </div>
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>70% Bull</span>
-              <span>20% Bear</span>
-            </div>
-          </div>
-
           <div className="flex items-center gap-2 text-sm text-slate-500 px-1 shrink-0">
             <Activity size={16} className="text-cyan-500" />
             <span className="font-medium text-slate-900 dark:text-white">Chỉ số PTKT</span>
@@ -1697,6 +1612,337 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               sub="Trong biên độ"
               icon={Target} 
             />
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 2.5: THÔNG TIN CƠ BẢN CỔ PHIẾU */}
+      <div className="glass-panel p-6 rounded-2xl border border-slate-200 dark:border-white/5">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+              <Layers size={20} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Thông tin cơ bản</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Tổng quan về cổ phiếu {selectedSymbol}</p>
+            </div>
+          </div>
+          {/* Simplize Scores */}
+          {simplizeData && (
+            <div className="hidden md:flex items-center gap-2">
+              {[
+                { label: 'Định giá', value: simplizeData.valuation_point, color: 'indigo' },
+                { label: 'Tăng trưởng', value: simplizeData.growth_point, color: 'emerald' },
+                { label: 'Hiệu suất', value: simplizeData.performance_point, color: 'amber' },
+                { label: 'Sức khỏe', value: simplizeData.financial_health_point, color: 'blue' },
+              ].map((score, idx) => (
+                <div key={idx} className="flex flex-col items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+                  <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold">{score.label}</span>
+                  <div className="flex items-center gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <div key={star} className={`w-2 h-2 rounded-full ${star <= (score.value || 0) ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Thông tin công ty */}
+          <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5">
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <Globe size={16} className="text-blue-500" />
+              Thông tin công ty
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-start">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tên công ty</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium text-right max-w-[60%]">
+                  {simplizeData?.name_vi || stockInfo?.name || '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Mã CK</span>
+                <span className="text-sm text-indigo-600 dark:text-indigo-400 font-bold">{selectedSymbol}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Sàn giao dịch</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium">
+                  {simplizeData?.stock_exchange || companies.find(c => c.symbol === selectedSymbol)?.exchange || 'HOSE'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Ngành</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium text-right max-w-[60%]">
+                  {simplizeData?.industry || companies.find(c => c.symbol === selectedSymbol)?.industry || '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Lĩnh vực</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium text-right max-w-[60%]">
+                  {simplizeData?.sector || '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">CP lưu hành</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium">
+                  {simplizeData?.outstanding_shares 
+                    ? `${(simplizeData.outstanding_shares / 1000000).toFixed(0)}M`
+                    : companies.find(c => c.symbol === selectedSymbol)?.outstanding_shares 
+                      ? `${(companies.find(c => c.symbol === selectedSymbol)!.outstanding_shares! / 1000000).toFixed(0)}M`
+                      : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Free Float</span>
+                <span className="text-xs text-slate-900 dark:text-white font-medium">
+                  {simplizeData?.free_float_rate ? `${simplizeData.free_float_rate.toFixed(1)}%` : '--'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Chỉ số định giá */}
+          <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5">
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <BarChart2 size={16} className="text-purple-500" />
+              Chỉ số định giá
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Vốn hóa</span>
+                <span className="text-sm text-slate-900 dark:text-white font-bold">
+                  {simplizeData?.market_cap 
+                    ? `${(simplizeData.market_cap / 1000000000000).toFixed(2)}T`
+                    : stockInfo?.marketCap 
+                      ? `${(stockInfo.marketCap / 1000000000000).toFixed(2)}T`
+                      : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">P/E</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-900 dark:text-white font-bold">
+                    {simplizeData?.pe_ratio?.toFixed(2) || '--'}
+                  </span>
+                  {simplizeData?.pe_ratio && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      simplizeData.pe_ratio < 10 ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                      simplizeData.pe_ratio < 20 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
+                      'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {simplizeData.pe_ratio < 10 ? 'Rẻ' : simplizeData.pe_ratio < 20 ? 'TB' : 'Cao'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">P/B</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-900 dark:text-white font-bold">
+                    {simplizeData?.pb_ratio?.toFixed(2) || '--'}
+                  </span>
+                  {simplizeData?.pb_ratio && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      simplizeData.pb_ratio < 1 ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                      simplizeData.pb_ratio < 2 ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400' :
+                      'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {simplizeData.pb_ratio < 1 ? 'Rẻ' : simplizeData.pb_ratio < 2 ? 'TB' : 'Cao'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">EPS</span>
+                <span className="text-sm text-slate-900 dark:text-white font-bold">
+                  {simplizeData?.eps 
+                    ? `${Math.round(simplizeData.eps).toLocaleString('vi-VN')}`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Book Value</span>
+                <span className="text-sm text-slate-900 dark:text-white font-bold">
+                  {simplizeData?.book_value ? `${Math.round(simplizeData.book_value).toLocaleString('vi-VN')}` : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Cổ tức</span>
+                <span className={`text-sm font-bold ${simplizeData?.dividend_yield && simplizeData.dividend_yield > 3 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>
+                  {simplizeData?.dividend_yield ? `${simplizeData.dividend_yield.toFixed(2)}%` : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Beta (5Y)</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.beta_5y && simplizeData.beta_5y > 1.2 ? 'text-rose-600 dark:text-rose-400' : 
+                  simplizeData?.beta_5y && simplizeData.beta_5y < 0.8 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.beta_5y ? simplizeData.beta_5y.toFixed(2) : '--'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Chỉ số hiệu quả */}
+          <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5">
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <TrendingUp size={16} className="text-emerald-500" />
+              Chỉ số hiệu quả
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">ROE</span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-bold ${
+                    simplizeData?.roe && simplizeData.roe > 15 
+                      ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
+                  }`}>
+                    {simplizeData?.roe 
+                      ? `${simplizeData.roe.toFixed(1)}%`
+                      : '--'}
+                  </span>
+                  {simplizeData?.roe && simplizeData.roe > 15 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                      Tốt
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">ROA</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.roa && simplizeData.roa > 5 
+                    ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.roa 
+                    ? `${simplizeData.roa.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tăng trưởng DT (5Y)</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.revenue_5y_growth && simplizeData.revenue_5y_growth > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.revenue_5y_growth && simplizeData.revenue_5y_growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.revenue_5y_growth 
+                    ? `${simplizeData.revenue_5y_growth > 0 ? '+' : ''}${simplizeData.revenue_5y_growth.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tăng trưởng LN (5Y)</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.net_income_5y_growth && simplizeData.net_income_5y_growth > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.net_income_5y_growth && simplizeData.net_income_5y_growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.net_income_5y_growth 
+                    ? `${simplizeData.net_income_5y_growth > 0 ? '+' : ''}${simplizeData.net_income_5y_growth.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tăng trưởng DT (QoQ)</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.revenue_qoq_growth && simplizeData.revenue_qoq_growth > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.revenue_qoq_growth && simplizeData.revenue_qoq_growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.revenue_qoq_growth 
+                    ? `${simplizeData.revenue_qoq_growth > 0 ? '+' : ''}${simplizeData.revenue_qoq_growth.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tăng trưởng LN (QoQ)</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.net_income_qoq_growth && simplizeData.net_income_qoq_growth > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.net_income_qoq_growth && simplizeData.net_income_qoq_growth < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.net_income_qoq_growth 
+                    ? `${simplizeData.net_income_qoq_growth > 0 ? '+' : ''}${simplizeData.net_income_qoq_growth.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Biến động giá */}
+          <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5">
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+              <Activity size={16} className="text-amber-500" />
+              Biến động giá
+            </h4>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">7 ngày</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.price_chg_7d && simplizeData.price_chg_7d > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.price_chg_7d && simplizeData.price_chg_7d < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.price_chg_7d 
+                    ? `${simplizeData.price_chg_7d > 0 ? '+' : ''}${simplizeData.price_chg_7d.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">30 ngày</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.price_chg_30d && simplizeData.price_chg_30d > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.price_chg_30d && simplizeData.price_chg_30d < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.price_chg_30d 
+                    ? `${simplizeData.price_chg_30d > 0 ? '+' : ''}${simplizeData.price_chg_30d.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">YTD</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.price_chg_ytd && simplizeData.price_chg_ytd > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.price_chg_ytd && simplizeData.price_chg_ytd < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.price_chg_ytd 
+                    ? `${simplizeData.price_chg_ytd > 0 ? '+' : ''}${simplizeData.price_chg_ytd.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">1 năm</span>
+                <span className={`text-sm font-bold ${
+                  simplizeData?.price_chg_1y && simplizeData.price_chg_1y > 0 ? 'text-emerald-600 dark:text-emerald-400' : 
+                  simplizeData?.price_chg_1y && simplizeData.price_chg_1y < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.price_chg_1y 
+                    ? `${simplizeData.price_chg_1y > 0 ? '+' : ''}${simplizeData.price_chg_1y.toFixed(1)}%`
+                    : '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Tín hiệu PTKT</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                  simplizeData?.ta_signal_1d === 'MUA' || simplizeData?.ta_signal_1d === 'MUA MẠNH' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                  simplizeData?.ta_signal_1d === 'BÁN' || simplizeData?.ta_signal_1d === 'BÁN MẠNH' ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400' :
+                  'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                }`}>
+                  {simplizeData?.ta_signal_1d || '--'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Mức rủi ro</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                  simplizeData?.overall_risk_level === 'Thấp' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+                  simplizeData?.overall_risk_level === 'Cao' ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400' :
+                  'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                }`}>
+                  {simplizeData?.overall_risk_level || '--'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>

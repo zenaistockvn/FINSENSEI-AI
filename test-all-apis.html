@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test All Vietnam Stock APIs</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        input, button, select {
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+        }
+        input { background: #2a2a4a; color: #fff; width: 150px; }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover { transform: scale(1.05); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-test-all { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .api-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .api-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .api-name { font-size: 18px; font-weight: bold; }
+        .api-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-pending { background: #666; }
+        .status-testing { background: #f39c12; }
+        .status-success { background: #27ae60; }
+        .status-error { background: #e74c3c; }
+        .status-cors { background: #9b59b6; }
+        
+        .api-info { font-size: 13px; color: #aaa; margin-bottom: 10px; }
+        .api-result {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .api-metrics {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .metric { color: #888; }
+        .metric span { color: #4ecdc4; font-weight: bold; }
+        
+        .summary {
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            text-align: center;
+        }
+        .summary-item h3 { font-size: 32px; margin: 0; }
+        .summary-item p { margin: 5px 0 0; color: #888; }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .data-table th, .data-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .data-table th { color: #4ecdc4; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔬 Test All Vietnam Stock APIs</h1>
+        
+        <div class="controls">
+            <input type="text" id="symbol" value="VNM" placeholder="Mã CK">
+            <button onclick="testAllAPIs()" class="btn-test-all">🚀 Test Tất Cả APIs</button>
+            <button onclick="clearResults()">🗑️ Clear</button>
+            <span id="progress" style="color: #4ecdc4;"></span>
+        </div>
+        
+        <div class="summary" id="summary" style="display: none;">
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <h3 id="totalAPIs">0</h3>
+                    <p>Tổng APIs</p>
+                </div>
+                <div class="summary-item">
+                    <h3 id="successAPIs" style="color: #27ae60;">0</h3>
+                    <p>Thành công</p>
+                </div>
+                <div class="summary-item">
+                    <h3 id="corsAPIs" style="color: #9b59b6;">0</h3>
+                    <p>CORS Error</p>
+                </div>
+                <div class="summary-item">
+                    <h3 id="errorAPIs" style="color: #e74c3c;">0</h3>
+                    <p>Lỗi khác</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="api-grid" id="apiGrid"></div>
+    </div>
+
+    <script>
+        const APIs = [
+            {
+                name: 'TCBS - Overview',
+                category: 'Fundamental',
+                getUrl: (s) => `https://apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/${s}/overview`,
+                parse: (d) => ({ pe: d.pe, pb: d.pb, roe: d.roe, roa: d.roa, eps: d.eps, marketCap: d.marketCap })
+            },
+            {
+                name: 'TCBS - Price History',
+                category: 'Price',
+                getUrl: (s) => {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - 30 * 24 * 60 * 60;
+                    return `https://apipubaws.tcbs.com.vn/stock-insight/v1/stock/bars-long-term?ticker=${s}&type=stock&resolution=D&from=${from}&to=${to}`;
+                },
+                parse: (d) => ({ records: d.data?.length || 0, sample: d.data?.[0] })
+            },
+            {
+                name: 'TCBS - Financial Ratio',
+                category: 'Fundamental',
+                getUrl: (s) => `https://apipubaws.tcbs.com.vn/tcanalysis/v1/finance/${s}/financialratio?yearly=0&isAll=false`,
+                parse: (d) => ({ quarters: d.length, sample: d[0] })
+            },
+            {
+                name: 'SSI iBoard - Bars',
+                category: 'Price',
+                getUrl: (s) => {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - 30 * 24 * 60 * 60;
+                    return `https://iboard.ssi.com.vn/dchart/api/1.1/bars?resolution=D&symbol=${s}&from=${from}&to=${to}`;
+                },
+                parse: (d) => ({ records: d.t?.length || 0, lastClose: d.c?.[d.c.length-1] })
+            },
+            {
+                name: 'VNDirect - Stock Prices',
+                category: 'Price',
+                getUrl: (s) => `https://finfo-api.vndirect.com.vn/v4/stock_prices?sort=date&q=code:${s}~date:gte:2024-12-01&size=30`,
+                parse: (d) => ({ records: d.data?.length || 0, sample: d.data?.[0] })
+            },
+            {
+                name: 'VNDirect - Ratios',
+                category: 'Fundamental',
+                getUrl: (s) => `https://finfo-api.vndirect.com.vn/v4/ratios?q=code:${s}&size=10`,
+                parse: (d) => ({ records: d.data?.length || 0, sample: d.data?.[0] })
+            },
+            {
+                name: 'Yahoo Finance VN',
+                category: 'Price + Fundamental',
+                getUrl: (s) => `https://query1.finance.yahoo.com/v8/finance/chart/${s}.VN?interval=1d&range=1mo`,
+                parse: (d) => {
+                    const result = d.chart?.result?.[0];
+                    return {
+                        records: result?.timestamp?.length || 0,
+                        currency: result?.meta?.currency,
+                        price: result?.meta?.regularMarketPrice
+                    };
+                }
+            },
+            {
+                name: 'Yahoo Finance - Quote Summary',
+                category: 'Fundamental',
+                getUrl: (s) => `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${s}.VN?modules=summaryDetail,defaultKeyStatistics`,
+                parse: (d) => {
+                    const r = d.quoteSummary?.result?.[0];
+                    return {
+                        pe: r?.summaryDetail?.trailingPE?.raw,
+                        pb: r?.defaultKeyStatistics?.priceToBook?.raw,
+                        marketCap: r?.summaryDetail?.marketCap?.raw
+                    };
+                }
+            },
+            {
+                name: 'TradingView Scanner',
+                category: 'Screener',
+                method: 'POST',
+                url: 'https://scanner.tradingview.com/vietnam/scan',
+                getBody: (s) => JSON.stringify({
+                    filter: [{ left: "name", operation: "match", right: s }],
+                    columns: ["name", "close", "volume", "price_earnings_ttm", "price_book_ratio", "return_on_equity"],
+                    range: [0, 10]
+                }),
+                parse: (d) => ({ 
+                    found: d.totalCount,
+                    data: d.data?.map(x => ({ symbol: x.s, values: x.d }))
+                })
+            },
+            {
+                name: 'Wichart - Price',
+                category: 'Price',
+                getUrl: (s) => {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - 30 * 24 * 60 * 60;
+                    return `https://wichart.vn/api/price/history?symbol=${s}&resolution=D&from=${from}&to=${to}`;
+                },
+                parse: (d) => ({ records: d.t?.length || 0, lastClose: d.c?.[d.c.length-1] })
+            },
+            {
+                name: 'VPS DataFeed',
+                category: 'Price',
+                getUrl: (s) => {
+                    const to = Math.floor(Date.now() / 1000);
+                    const from = to - 30 * 24 * 60 * 60;
+                    return `https://bgapidatafeed.vps.com.vn/getliststockdata/${s}/D?from=${from}&to=${to}`;
+                },
+                parse: (d) => ({ records: Array.isArray(d) ? d.length : 0, sample: d[0] })
+            },
+            {
+                name: 'Fireant - Fundamental',
+                category: 'Fundamental',
+                getUrl: (s) => `https://restv2.fireant.vn/symbols/${s}/fundamental`,
+                headers: {
+                    'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IkdYdExONzViZlZQakdvNERWdjV4QkZwdEVvSSJ9.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4iLCJhdWQiOiJodHRwczovL2FjY291bnRzLmZpcmVhbnQudm4vcmVzb3VyY2VzIiwiZXhwIjoxOTEzNjIzMDMyLCJuYmYiOjE2MTM2MjMwMzIsImNsaWVudF9pZCI6ImZpcmVhbnQudHJhZGVzdGF0aW9uIiwic2NvcGUiOlsib3BlbmlkIiwicHJvZmlsZSIsInJvbGVzIiwiZW1haWwiLCJhY2NvdW50cy1yZWFkIiwiYWNjb3VudHMtd3JpdGUiLCJvcmRlcnMtcmVhZCIsIm9yZGVycy13cml0ZSIsImNvbXBhbmllcy1yZWFkIiwiaW5kaXZpZHVhbHMtcmVhZCIsImZpbmFuY2UtcmVhZCIsInBvc3RzLXdyaXRlIiwicG9zdHMtcmVhZCIsInN5bWJvbHMtcmVhZCIsInVzZXItZGF0YS1yZWFkIiwidXNlci1kYXRhLXdyaXRlIiwidXNlcnMtcmVhZCJdLCJzdWIiOiIxZmI5NjI3Yy1lZDZjLTQwNGUtYjE2NS0xZjgzZTkwM2M1MmQiLCJhdXRoX3RpbWUiOjE2MTM2MjMwMzIsImlkcCI6IkZhY2Vib29rIiwibmFtZSI6Im1pbmhwbi5vcmcuZWMxQGdtYWlsLmNvbSIsInNlY3VyaXR5X3N0YW1wIjoiODIzMzcwOGUtYjFjOS00ZmQ3LTkwYmYtMzI2NTYzYmU4N2JkIiwianRpIjoiZmIyZWJkNzAzNTY4ZTc1MjdkMWNiMTgzNTdlYjcxYzgiLCJhbXIiOlsiZXh0ZXJuYWwiXX0.OhgGCRCsL8HVXSueC31wVLUhwWWPkOu-yKTZkt3jhdrK3MMA1yJroj0Y79LVHF-Y8YbXgXDlBJootYBxvWL5SPqnN8eFsNwLPgxxaVS5JyqfOVBLLJ-ksxSMpKpPOWDYsVnMqBvF4UXVLK5ULqfSMVZpwYFkDsT7QHQMHYIW_pPgYepO-XGw0foYzGLuQU2TPFHH5HYnV1F-0Nqd1rett0HhpgHiCmE7LfgL8Yx0OtXqErKg9Po5ThOtfVwcHfWMwDnFjBwcDGTDKue5pYgmMxXlFseFnGHh2rCzMY'
+                },
+                parse: (d) => ({ pe: d.pe, pb: d.pb, roe: d.roe, eps: d.eps })
+            },
+            {
+                name: '24HMoney - Financial Ratio',
+                category: 'Fundamental',
+                getUrl: (s) => `https://api-finance-t19.24hmoney.vn/v2/web/stock/financial-ratio?symbol=${s}`,
+                parse: (d) => ({ data: d.data })
+            },
+            {
+                name: 'Cafef - Price History',
+                category: 'Price',
+                getUrl: (s) => `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${s}&StartDate=01/12/2024&EndDate=21/12/2024&PageIndex=1&PageSize=30`,
+                parse: (d) => ({ records: d.Data?.Data?.length || 0 })
+            }
+        ];
+
+        let results = {};
+
+        async function testAPI(api, symbol) {
+            const startTime = Date.now();
+            const cardId = api.name.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            updateCardStatus(cardId, 'testing', 'Đang test...');
+            
+            try {
+                const url = api.getUrl ? api.getUrl(symbol) : api.url;
+                const options = {
+                    method: api.method || 'GET',
+                    headers: api.headers || {}
+                };
+                
+                if (api.method === 'POST') {
+                    options.headers['Content-Type'] = 'application/json';
+                    options.body = api.getBody(symbol);
+                }
+                
+                const response = await fetch(url, options);
+                const elapsed = Date.now() - startTime;
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                const parsed = api.parse(data);
+                
+                results[api.name] = { success: true, data: parsed, time: elapsed };
+                updateCardStatus(cardId, 'success', 'Thành công', parsed, elapsed, data);
+                return { success: true };
+                
+            } catch (error) {
+                const elapsed = Date.now() - startTime;
+                const isCORS = error.message.includes('Failed to fetch') || 
+                              error.message.includes('CORS') ||
+                              error.message.includes('NetworkError');
+                
+                results[api.name] = { success: false, error: error.message, cors: isCORS };
+                updateCardStatus(cardId, isCORS ? 'cors' : 'error', 
+                    isCORS ? 'CORS Error (cần proxy)' : error.message, null, elapsed);
+                return { success: false, cors: isCORS };
+            }
+        }
+
+        function updateCardStatus(cardId, status, message, data, time, rawData) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+            
+            const statusEl = card.querySelector('.api-status');
+            const resultEl = card.querySelector('.api-result');
+            const metricsEl = card.querySelector('.api-metrics');
+            
+            statusEl.className = `api-status status-${status}`;
+            statusEl.textContent = status === 'success' ? '✓ OK' : 
+                                   status === 'cors' ? '⚠ CORS' :
+                                   status === 'testing' ? '⏳' : '✗ Error';
+            
+            if (data) {
+                resultEl.innerHTML = `<strong>Parsed Data:</strong>\n${JSON.stringify(data, null, 2)}\n\n<strong>Raw Sample:</strong>\n${JSON.stringify(rawData, null, 2).substring(0, 1000)}...`;
+            } else {
+                resultEl.textContent = message;
+            }
+            
+            if (time) {
+                metricsEl.innerHTML = `<div class="metric">Thời gian: <span>${time}ms</span></div>`;
+            }
+        }
+
+        async function testAllAPIs() {
+            const symbol = document.getElementById('symbol').value.toUpperCase();
+            results = {};
+            
+            // Create cards
+            const grid = document.getElementById('apiGrid');
+            grid.innerHTML = APIs.map(api => {
+                const cardId = api.name.replace(/[^a-zA-Z0-9]/g, '_');
+                return `
+                    <div class="api-card" id="${cardId}">
+                        <div class="api-header">
+                            <div class="api-name">${api.name}</div>
+                            <div class="api-status status-pending">Chờ</div>
+                        </div>
+                        <div class="api-info">Category: ${api.category}</div>
+                        <div class="api-result">Waiting...</div>
+                        <div class="api-metrics"></div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('summary').style.display = 'block';
+            
+            let completed = 0;
+            let success = 0;
+            let cors = 0;
+            let errors = 0;
+            
+            // Test all APIs in parallel
+            const promises = APIs.map(async (api) => {
+                const result = await testAPI(api, symbol);
+                completed++;
+                if (result.success) success++;
+                else if (result.cors) cors++;
+                else errors++;
+                
+                document.getElementById('progress').textContent = `${completed}/${APIs.length}`;
+                document.getElementById('totalAPIs').textContent = APIs.length;
+                document.getElementById('successAPIs').textContent = success;
+                document.getElementById('corsAPIs').textContent = cors;
+                document.getElementById('errorAPIs').textContent = errors;
+            });
+            
+            await Promise.all(promises);
+            document.getElementById('progress').textContent = '✓ Hoàn thành!';
+        }
+
+        function clearResults() {
+            document.getElementById('apiGrid').innerHTML = '';
+            document.getElementById('summary').style.display = 'none';
+            document.getElementById('progress').textContent = '';
+            results = {};
+        }
+    </script>
+</body>
+</html>

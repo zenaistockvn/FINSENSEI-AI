@@ -201,6 +201,87 @@ export interface BrokerRecommendation {
   created_at: string;
 }
 
+// Simplize Company Data - Dữ liệu chi tiết từ Simplize
+export interface SimplizeCompanyData {
+  id: number;
+  symbol: string;
+  name_vi: string;
+  name_en: string;
+  stock_exchange: string;
+  industry: string;
+  sector: string;
+  website: string;
+  logo_url: string;
+  market_cap: number;
+  outstanding_shares: number;
+  free_float_rate: number;
+  
+  // Price data
+  price_close: number;
+  price_open: number;
+  price_high: number;
+  price_low: number;
+  price_ceiling: number;
+  price_floor: number;
+  price_reference: number;
+  net_change: number;
+  pct_change: number;
+  volume: number;
+  volume_10d_avg: number;
+  
+  // Valuation ratios
+  pe_ratio: number;
+  pb_ratio: number;
+  eps: number;
+  book_value: number;
+  dividend_yield: number;
+  
+  // Financial metrics
+  roe: number;
+  roa: number;
+  beta_5y: number;
+  
+  // Growth metrics
+  revenue_5y_growth: number;
+  net_income_5y_growth: number;
+  revenue_ltm_growth: number;
+  net_income_ltm_growth: number;
+  revenue_qoq_growth: number;
+  net_income_qoq_growth: number;
+  
+  // Price changes
+  price_chg_7d: number;
+  price_chg_30d: number;
+  price_chg_ytd: number;
+  price_chg_1y: number;
+  price_chg_3y: number;
+  price_chg_5y: number;
+  
+  // Simplize scores (0-5)
+  valuation_point: number;
+  growth_point: number;
+  performance_point: number;
+  financial_health_point: number;
+  dividend_point: number;
+  
+  // Signals
+  ta_signal_1d: string;
+  overall_risk_level: string;
+  quality_valuation: string;
+  company_quality: number;
+  
+  // Business info
+  main_service: string;
+  business_overview: string;
+  business_strategy: string;
+  business_risk: string;
+  
+  // Meta
+  watchlist_count: number;
+  no_of_recommendations: number;
+  updated_at: string;
+}
+
 // API Functions
 async function fetchFromSupabase<T>(endpoint: string, params: string = ""): Promise<T[]> {
   try {
@@ -307,6 +388,25 @@ export async function getLatestFinancialRatio(symbol: string): Promise<Financial
     `symbol=eq.${symbol}&order=year.desc,quarter.desc&limit=1`
   );
   return data[0] || null;
+}
+
+// Get all financial ratios (latest for each symbol)
+export async function getAllFinancialRatios(): Promise<FinancialRatio[]> {
+  // Get latest financial data for all symbols
+  const data = await fetchFromSupabase<FinancialRatio>(
+    "financial_ratios",
+    `order=symbol.asc,year.desc,quarter.desc`
+  );
+  
+  // Keep only the latest record for each symbol
+  const latestBySymbol = new Map<string, FinancialRatio>();
+  data.forEach(item => {
+    if (!latestBySymbol.has(item.symbol)) {
+      latestBySymbol.set(item.symbol, item);
+    }
+  });
+  
+  return Array.from(latestBySymbol.values());
 }
 
 // Stock News
@@ -466,6 +566,22 @@ export async function getGoldenCrossStocks(): Promise<TechnicalIndicators[]> {
   );
 }
 
+// Simplize Company Data
+export async function getSimplizeCompanyData(symbol: string): Promise<SimplizeCompanyData | null> {
+  const data = await fetchFromSupabase<SimplizeCompanyData>(
+    "simplize_company_data",
+    `symbol=eq.${symbol}`
+  );
+  return data[0] || null;
+}
+
+export async function getAllSimplizeCompanyData(): Promise<SimplizeCompanyData[]> {
+  return fetchFromSupabase<SimplizeCompanyData>(
+    "simplize_company_data",
+    `order=symbol.asc`
+  );
+}
+
 // Get all analysis data for a stock
 export interface StockAnalysisData {
   aiAnalysis: AIAnalysis | null;
@@ -503,6 +619,7 @@ export default {
   getIndexHistory,
   getFinancialRatios,
   getLatestFinancialRatio,
+  getAllFinancialRatios,
   getTopMovers,
   getDashboardSummary,
   getStockNews,
@@ -520,5 +637,7 @@ export default {
   getStocksAboveMA,
   getOversoldStocks,
   getOverboughtStocks,
-  getGoldenCrossStocks
+  getGoldenCrossStocks,
+  getSimplizeCompanyData,
+  getAllSimplizeCompanyData
 };

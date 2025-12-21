@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync VN30 - VCI API (2 năm)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 30px; }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        button {
+            padding: 15px 30px;
+            border-radius: 10px;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        button:hover { transform: scale(1.05); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-sync { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+        .btn-stop { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: #fff; }
+        .btn-check { background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%); color: #fff; }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-value { font-size: 32px; font-weight: bold; color: #4ecdc4; }
+        .stat-label { color: #888; margin-top: 5px; }
+        
+        .progress-container {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .progress-bar {
+            height: 30px;
+            background: #2a2a4a;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2, #f093fb);
+            background-size: 200% 100%;
+            animation: gradient 2s ease infinite;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .progress-text { text-align: center; color: #888; }
+        
+        .log-container {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .log-entry { padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .log-success { color: #27ae60; }
+        .log-error { color: #e74c3c; }
+        .log-info { color: #3498db; }
+        .log-warning { color: #f39c12; }
+        
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .stock-item {
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+        }
+        .stock-item.synced { background: rgba(39, 174, 96, 0.3); }
+        .stock-item.syncing { background: rgba(241, 196, 15, 0.3); animation: pulse 1s infinite; }
+        .stock-item.error { background: rgba(231, 76, 60, 0.3); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .stock-symbol { font-weight: bold; }
+        .stock-records { color: #888; font-size: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Sync VN30 - VCI API</h1>
+        <p class="subtitle">Đồng bộ giá 2 năm gần nhất cho 30 cổ phiếu VN30</p>
+        
+        <div class="controls">
+            <button class="btn-sync" onclick="startSync()" id="btnSync">🚀 Bắt đầu Sync</button>
+            <button class="btn-stop" onclick="stopSync()" id="btnStop" disabled>⏹️ Dừng</button>
+            <button class="btn-check" onclick="checkData()">📋 Kiểm tra Data</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalStocks">30</div>
+                <div class="stat-label">Tổng mã</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="syncedStocks">0</div>
+                <div class="stat-label">Đã sync</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Tổng records</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="errorCount">0</div>
+                <div class="stat-label">Lỗi</div>
+            </div>
+        </div>
+        
+        <div class="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+            </div>
+            <div class="progress-text" id="progressText">Sẵn sàng sync...</div>
+        </div>
+        
+        <div class="stock-grid" id="stockGrid"></div>
+        
+        <h3 style="margin-top: 30px;">📝 Log</h3>
+        <div class="log-container" id="logContainer"></div>
+    </div>
+
+    <script>
+        // Supabase config
+        const SUPABASE_URL = 'https://trbiojajipzpqlnlghtt.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ';
+        
+        // VN30 stocks
+        const VN30 = [
+            'ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG',
+            'MBB', 'MSN', 'MWG', 'PLX', 'POW', 'SAB', 'SHB', 'SSB', 'SSI', 'STB',
+            'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE'
+        ];
+        
+        let isRunning = false;
+        let syncedCount = 0;
+        let totalRecords = 0;
+        let errorCount = 0;
+        
+        // Initialize stock grid
+        function initStockGrid() {
+            const grid = document.getElementById('stockGrid');
+            grid.innerHTML = VN30.map(symbol => `
+                <div class="stock-item" id="stock-${symbol}">
+                    <div class="stock-symbol">${symbol}</div>
+                    <div class="stock-records" id="records-${symbol}">-</div>
+                </div>
+            `).join('');
+        }
+        
+        function log(message, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const time = new Date().toLocaleTimeString();
+            container.innerHTML = `<div class="log-entry log-${type}">[${time}] ${message}</div>` + container.innerHTML;
+        }
+        
+        function updateProgress(current, total, text) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+        
+        function updateStats() {
+            document.getElementById('syncedStocks').textContent = syncedCount;
+            document.getElementById('totalRecords').textContent = totalRecords.toLocaleString();
+            document.getElementById('errorCount').textContent = errorCount;
+        }
+        
+        // Primary: TCBS API (more stable)
+        async function fetchPrices(symbol) {
+            // Try TCBS first (most stable)
+            try {
+                return await fetchTCBSPrices(symbol);
+            } catch (e1) {
+                log(`TCBS failed for ${symbol}, trying SSI...`, 'warning');
+                // Fallback to SSI
+                try {
+                    return await fetchSSIPrices(symbol);
+                } catch (e2) {
+                    throw new Error(`All APIs failed: ${e1.message}`);
+                }
+            }
+        }
+        
+        // SSI API fallback
+        async function fetchSSIPrices(symbol) {
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - (2 * 365 * 24 * 60 * 60);
+            
+            const url = `https://iboard.ssi.com.vn/dchart/api/1.1/bars?resolution=D&symbol=${symbol}&from=${from}&to=${to}`;
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (!data.t || data.t.length === 0) {
+                throw new Error('No data from SSI');
+            }
+            
+            return data.t.map((timestamp, i) => ({
+                symbol: symbol,
+                trading_date: new Date(timestamp * 1000).toISOString().split('T')[0],
+                open_price: data.o[i],
+                high_price: data.h[i],
+                low_price: data.l[i],
+                close_price: data.c[i],
+                volume: data.v[i]
+            }));
+        }
+        
+        // TCBS API fallback
+        async function fetchTCBSPrices(symbol) {
+            const to = Math.floor(Date.now() / 1000);
+            const from = to - (2 * 365 * 24 * 60 * 60); // 2 years
+            
+            const url = `https://apipubaws.tcbs.com.vn/stock-insight/v1/stock/bars-long-term?ticker=${symbol}&type=stock&resolution=D&from=${from}&to=${to}`;
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (!data.data || data.data.length === 0) {
+                throw new Error('No data from TCBS');
+            }
+            
+            return data.data.map(item => ({
+                symbol: symbol,
+                trading_date: item.tradingDate.split('T')[0],
+                open_price: item.open,
+                high_price: item.high,
+                low_price: item.low,
+                close_price: item.close,
+                volume: item.volume
+            }));
+        }
+        
+        // Upload to Supabase
+        async function uploadToSupabase(prices) {
+            const batchSize = 500;
+            let uploaded = 0;
+            
+            for (let i = 0; i < prices.length; i += batchSize) {
+                const batch = prices.slice(i, i + batchSize);
+                
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Prefer': 'resolution=merge-duplicates'
+                    },
+                    body: JSON.stringify(batch)
+                });
+                
+                if (!response.ok) {
+                    const error = await response.text();
+                    throw new Error(`Upload failed: ${error}`);
+                }
+                
+                uploaded += batch.length;
+            }
+            
+            return uploaded;
+        }
+        
+        // Sync single stock
+        async function syncStock(symbol) {
+            const stockEl = document.getElementById(`stock-${symbol}`);
+            const recordsEl = document.getElementById(`records-${symbol}`);
+            
+            stockEl.className = 'stock-item syncing';
+            
+            try {
+                log(`Đang lấy dữ liệu ${symbol}...`, 'info');
+                const prices = await fetchPrices(symbol);
+                
+                log(`${symbol}: ${prices.length} records, đang upload...`, 'info');
+                await uploadToSupabase(prices);
+                
+                stockEl.className = 'stock-item synced';
+                recordsEl.textContent = `${prices.length} records`;
+                
+                syncedCount++;
+                totalRecords += prices.length;
+                updateStats();
+                
+                log(`✓ ${symbol}: ${prices.length} records đã sync`, 'success');
+                return prices.length;
+                
+            } catch (error) {
+                stockEl.className = 'stock-item error';
+                recordsEl.textContent = 'Error';
+                errorCount++;
+                updateStats();
+                
+                log(`✗ ${symbol}: ${error.message}`, 'error');
+                return 0;
+            }
+        }
+        
+        // Main sync function
+        async function startSync() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            syncedCount = 0;
+            totalRecords = 0;
+            errorCount = 0;
+            
+            document.getElementById('btnSync').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+            
+            initStockGrid();
+            updateStats();
+            log('🚀 Bắt đầu sync VN30...', 'info');
+            
+            for (let i = 0; i < VN30.length; i++) {
+                if (!isRunning) {
+                    log('⏹️ Đã dừng sync', 'warning');
+                    break;
+                }
+                
+                const symbol = VN30[i];
+                updateProgress(i + 1, VN30.length, `Đang sync ${symbol} (${i + 1}/${VN30.length})`);
+                
+                await syncStock(symbol);
+                
+                // Delay between requests
+                if (i < VN30.length - 1) {
+                    await new Promise(r => setTimeout(r, 1500));
+                }
+            }
+            
+            isRunning = false;
+            document.getElementById('btnSync').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+            
+            updateProgress(VN30.length, VN30.length, `Hoàn thành! ${syncedCount}/${VN30.length} mã, ${totalRecords.toLocaleString()} records`);
+            log(`🎉 Hoàn thành! ${syncedCount} mã, ${totalRecords.toLocaleString()} records, ${errorCount} lỗi`, 'success');
+        }
+        
+        function stopSync() {
+            isRunning = false;
+            document.getElementById('btnStop').disabled = true;
+            log('Đang dừng...', 'warning');
+        }
+        
+        async function checkData() {
+            log('Đang kiểm tra dữ liệu...', 'info');
+            
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/stock_prices?select=symbol,trading_date&order=trading_date.desc&limit=1`,
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                
+                const data = await response.json();
+                
+                // Count by symbol
+                const countResponse = await fetch(
+                    `${SUPABASE_URL}/rest/v1/rpc/count_stock_prices`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+                
+                // Simple count
+                const allResponse = await fetch(
+                    `${SUPABASE_URL}/rest/v1/stock_prices?select=count`,
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`,
+                            'Prefer': 'count=exact'
+                        }
+                    }
+                );
+                
+                const count = allResponse.headers.get('content-range')?.split('/')[1] || '?';
+                
+                log(`📊 Tổng records trong DB: ${count}`, 'success');
+                if (data.length > 0) {
+                    log(`📅 Dữ liệu mới nhất: ${data[0].symbol} - ${data[0].trading_date}`, 'info');
+                }
+                
+            } catch (error) {
+                log(`Lỗi kiểm tra: ${error.message}`, 'error');
+            }
+        }
+        
+        // Init
+        initStockGrid();
+    </script>
+</body>
+</html>

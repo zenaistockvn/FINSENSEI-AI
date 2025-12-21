@@ -147,32 +147,25 @@ const App: React.FC = () => {
       case 'dashboard':
         return (
           <div className="space-y-6 animate-fade-in-up">
-            {/* Market Overview */}
+            {/* Row 1: Nhịp đập thị trường */}
             <Suspense fallback={<LoadingFallback height="120px" />}>
               <MarketPulse />
             </Suspense>
             
-            {/* Main Grid: 2 columns on large screens */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column: FinSensei Intro + Sentiment */}
-              <div className="lg:col-span-2 space-y-6">
-                {/* Giới thiệu FinSensei AI và SEN */}
-                <Suspense fallback={<LoadingFallback height="240px" />}>
-                  <FinSenseiIntro isDark={isDark} onTrySen={() => setActiveTab('sen_assistant')} />
-                </Suspense>
-                
-                {/* Đồng hồ đo Tâm lý Thị trường */}
-                <Suspense fallback={<LoadingFallback height="220px" />}>
-                  <MarketSentimentGauge isDark={isDark} />
-                </Suspense>
-              </div>
+            {/* Row 2: Giới thiệu FinSensei AI */}
+            <Suspense fallback={<LoadingFallback height="280px" />}>
+              <FinSenseiIntro isDark={isDark} onTrySen={() => setActiveTab('sen_assistant')} />
+            </Suspense>
+            
+            {/* Row 3: Tâm lý thị trường + Top cổ phiếu */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Suspense fallback={<LoadingFallback height="320px" />}>
+                <MarketSentimentGauge isDark={isDark} />
+              </Suspense>
               
-              {/* Right Column: Smart Rankings */}
-              <div className="lg:col-span-1">
-                <Suspense fallback={<LoadingFallback height="480px" />}>
-                  <SmartRankings />
-                </Suspense>
-              </div>
+              <Suspense fallback={<LoadingFallback height="320px" />}>
+                <SmartRankings />
+              </Suspense>
             </div>
           </div>
         );

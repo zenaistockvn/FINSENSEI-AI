@@ -88,7 +88,7 @@ export function useMarketIndices() {
   return { indices, loading, error, refresh };
 }
 
-// Hook: Get financial ratios for a symbol
+// Hook: Get financial ratios for a symbol (DEPRECATED - use useSimplizeData instead)
 export function useFinancialRatios(symbol: string) {
   const [ratios, setRatios] = useState<supabase.FinancialRatio[]>([]);
   const [latestRatio, setLatestRatio] = useState<supabase.FinancialRatio | null>(null);
@@ -114,6 +114,55 @@ export function useFinancialRatios(symbol: string) {
   }, [symbol]);
 
   return { ratios, latestRatio, loading, error };
+}
+
+// Hook: Get Simplize company data for a symbol (RECOMMENDED)
+export function useSimplizeData(symbol: string) {
+  const [data, setData] = useState<supabase.SimplizeCompanyData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!symbol) return;
+    
+    const fetch = async () => {
+      setLoading(true);
+      try {
+        const result = await supabase.getSimplizeCompanyData(symbol);
+        setData(result);
+      } catch (e) {
+        setError('Failed to fetch Simplize data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, [symbol]);
+
+  return { data, loading, error };
+}
+
+// Hook: Get all Simplize company data
+export function useAllSimplizeData() {
+  const [data, setData] = useState<supabase.SimplizeCompanyData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        const result = await supabase.getAllSimplizeCompanyData();
+        setData(result);
+      } catch (e) {
+        setError('Failed to fetch Simplize data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, []);
+
+  return { data, loading, error };
 }
 
 // Hook: Get top movers
@@ -204,6 +253,8 @@ export default {
   useStockPrices,
   useMarketIndices,
   useFinancialRatios,
+  useSimplizeData,
+  useAllSimplizeData,
   useTopMovers,
   useCompanySearch,
   useDashboardSummary
