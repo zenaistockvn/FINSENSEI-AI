@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tạo bảng Guru Stocks - SenAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold mb-2">🎓 Tạo bảng Guru Stocks</h1>
+            <p class="text-slate-400">Tạo bảng guru_stocks trên Supabase để lưu cổ phiếu theo trường phái Guru</p>
+        </div>
+
+        <!-- Status -->
+        <div id="statusSection" class="bg-slate-800 rounded-xl p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">Trạng thái</h2>
+            <div id="statusContent" class="text-slate-400">Đang kiểm tra...</div>
+        </div>
+
+        <!-- Actions -->
+        <div class="bg-slate-800 rounded-xl p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">Hành động</h2>
+            <div class="flex gap-4">
+                <button onclick="checkTable()" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-all">
+                    🔍 Kiểm tra bảng
+                </button>
+                <button onclick="createTable()" id="createBtn" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold transition-all">
+                    ✨ Tạo bảng guru_stocks
+                </button>
+            </div>
+        </div>
+
+        <!-- SQL Preview -->
+        <div class="bg-slate-800 rounded-xl p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">SQL Script</h2>
+            <p class="text-sm text-slate-400 mb-4">Nếu tạo tự động không được, copy SQL này vào Supabase Dashboard > SQL Editor:</p>
+            <pre id="sqlPreview" class="bg-slate-900 p-4 rounded-lg text-xs text-green-400 overflow-x-auto max-h-96"></pre>
+            <button onclick="copySQL()" class="mt-4 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm">
+                📋 Copy SQL
+            </button>
+        </div>
+
+        <!-- Log -->
+        <div class="bg-slate-800 rounded-xl p-6">
+            <h2 class="text-xl font-bold mb-4">Log</h2>
+            <div id="logContent" class="space-y-2 text-sm max-h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.GFljmic0Cbpn-IC8qvlJBxp3Y5O7gBsLOqzPT-JROHA";
+
+        const SQL_CREATE_TABLE = `
+-- Tạo bảng guru_stocks
+CREATE TABLE IF NOT EXISTS guru_stocks (
+  id SERIAL PRIMARY KEY,
+  strategy_id VARCHAR(20) NOT NULL,
+  strategy_name VARCHAR(100) NOT NULL,
+  symbol VARCHAR(10) NOT NULL,
+  company_name VARCHAR(200),
+  industry VARCHAR(100),
+  current_price DECIMAL(12,2),
+  price_change DECIMAL(8,4),
+  guru_score INTEGER CHECK (guru_score >= 0 AND guru_score <= 100),
+  match_reason TEXT,
+  metrics JSONB,
+  rank_in_strategy INTEGER,
+  calculation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(strategy_id, symbol, calculation_date)
+);
+
+-- Tạo indexes
+CREATE INDEX IF NOT EXISTS idx_guru_stocks_strategy ON guru_stocks(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_guru_stocks_symbol ON guru_stocks(symbol);
+CREATE INDEX IF NOT EXISTS idx_guru_stocks_date ON guru_stocks(calculation_date);
+CREATE INDEX IF NOT EXISTS idx_guru_stocks_score ON guru_stocks(guru_score DESC);
+
+-- Bật RLS
+ALTER TABLE guru_stocks ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+DROP POLICY IF EXISTS "Allow public read guru_stocks" ON guru_stocks;
+CREATE POLICY "Allow public read guru_stocks" ON guru_stocks FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow service insert guru_stocks" ON guru_stocks;
+CREATE POLICY "Allow service insert guru_stocks" ON guru_stocks FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow service update guru_stocks" ON guru_stocks;
+CREATE POLICY "Allow service update guru_stocks" ON guru_stocks FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Allow service delete guru_stocks" ON guru_stocks;
+CREATE POLICY "Allow service delete guru_stocks" ON guru_stocks FOR DELETE USING (true);
+`;
+
+        document.getElementById('sqlPreview').textContent = SQL_CREATE_TABLE;
+
+        function log(message, type = 'info') {
+            const logContent = document.getElementById('logContent');
+            const colors = {
+                info: 'text-slate-300',
+                success: 'text-emerald-400',
+                error: 'text-rose-400',
+                warning: 'text-amber-400'
+            };
+            const time = new Date().toLocaleTimeString('vi-VN');
+            logContent.innerHTML += `<div class="${colors[type]}">[${time}] ${message}</div>`;
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        async function checkTable() {
+            log('Đang kiểm tra bảng guru_stocks...');
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/guru_stocks?limit=1`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('statusContent').innerHTML = `
+                        <div class="flex items-center gap-2 text-emerald-400">
+                            <span class="text-2xl">✅</span>
+                            <span>Bảng guru_stocks đã tồn tại! Có ${Array.isArray(data) ? data.length : 0} records.</span>
+                        </div>
+                    `;
+                    log('✓ Bảng guru_stocks đã tồn tại', 'success');
+                    return true;
+                } else {
+                    const error = await response.text();
+                    if (error.includes('does not exist') || response.status === 404) {
+                        document.getElementById('statusContent').innerHTML = `
+                            <div class="flex items-center gap-2 text-amber-400">
+                                <span class="text-2xl">⚠️</span>
+                                <span>Bảng guru_stocks chưa tồn tại. Nhấn "Tạo bảng" để tạo mới.</span>
+                            </div>
+                        `;
+                        log('⚠ Bảng guru_stocks chưa tồn tại', 'warning');
+                        return false;
+                    }
+                    throw new Error(error);
+                }
+            } catch (error) {
+                document.getElementById('statusContent').innerHTML = `
+                    <div class="flex items-center gap-2 text-rose-400">
+                        <span class="text-2xl">❌</span>
+                        <span>Lỗi: ${error.message}</span>
+                    </div>
+                `;
+                log(`✗ Lỗi: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function createTable() {
+            const btn = document.getElementById('createBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Đang tạo...';
+            
+            log('Đang tạo bảng guru_stocks...');
+            
+            try {
+                // Thử tạo qua RPC (nếu có function exec_sql)
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ sql: SQL_CREATE_TABLE })
+                });
+                
+                if (response.ok) {
+                    log('✓ Đã tạo bảng thành công!', 'success');
+                    await checkTable();
+                } else {
+                    // Nếu không có RPC, hướng dẫn manual
+                    log('⚠ Không thể tạo tự động. Vui lòng copy SQL và chạy trong Supabase Dashboard.', 'warning');
+                    document.getElementById('statusContent').innerHTML = `
+                        <div class="text-amber-400">
+                            <p class="font-bold mb-2">⚠️ Cần tạo thủ công:</p>
+                            <ol class="list-decimal list-inside text-sm space-y-1">
+                                <li>Mở <a href="https://supabase.com/dashboard" target="_blank" class="text-indigo-400 underline">Supabase Dashboard</a></li>
+                                <li>Chọn project của bạn</li>
+                                <li>Vào SQL Editor</li>
+                                <li>Copy SQL bên dưới và nhấn Run</li>
+                            </ol>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                log(`✗ Lỗi: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '✨ Tạo bảng guru_stocks';
+            }
+        }
+
+        function copySQL() {
+            navigator.clipboard.writeText(SQL_CREATE_TABLE).then(() => {
+                log('✓ Đã copy SQL vào clipboard!', 'success');
+                alert('Đã copy SQL! Paste vào Supabase Dashboard > SQL Editor và nhấn Run.');
+            });
+        }
+
+        // Check on load
+        checkTable();
+    </script>
+</body>
+</html>

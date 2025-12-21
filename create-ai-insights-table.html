@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Tạo bảng AI Stock Insights</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white p-8">
+  <div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">🧠 Tạo bảng AI Stock Insights</h1>
+    
+    <div id="status" class="bg-slate-800 rounded-xl p-4 mb-4">
+      <p class="text-slate-400">Nhấn nút để tạo bảng...</p>
+    </div>
+    
+    <button onclick="createTable()" class="bg-indigo-600 hover:bg-indigo-700 px-6 py-3 rounded-xl font-bold">
+      Tạo bảng ai_stock_insights
+    </button>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://trbiojajipzpqlnlghtt.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ';
+
+    function log(msg, type = 'info') {
+      const status = document.getElementById('status');
+      const color = type === 'success' ? 'text-emerald-400' : type === 'error' ? 'text-rose-400' : 'text-slate-300';
+      status.innerHTML += `<p class="${color}">${msg}</p>`;
+    }
+
+    async function createTable() {
+      document.getElementById('status').innerHTML = '';
+      log('🚀 Bắt đầu tạo bảng...');
+
+      try {
+        // Test insert to create table structure
+        const testData = {
+          symbol: '_TEST_',
+          analysis_date: new Date().toISOString().split('T')[0],
+          overall_sentiment: 'NEUTRAL',
+          confidence_score: 50,
+          recommendation: 'THEO DÕI',
+          short_summary: 'Test record',
+          strengths: [],
+          risks: []
+        };
+
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/ai_stock_insights`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(testData)
+        });
+
+        if (response.ok || response.status === 201) {
+          log('✅ Bảng đã tồn tại hoặc được tạo thành công!', 'success');
+          
+          // Delete test record
+          await fetch(`${SUPABASE_URL}/rest/v1/ai_stock_insights?symbol=eq._TEST_`, {
+            method: 'DELETE',
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`
+            }
+          });
+          log('🧹 Đã xóa record test', 'success');
+        } else if (response.status === 404) {
+          log('⚠️ Bảng chưa tồn tại. Vui lòng chạy SQL trong Supabase Dashboard:', 'error');
+          log('Vào SQL Editor và chạy file: supabase/create-ai-stock-insights-table.sql', 'info');
+        } else {
+          const error = await response.text();
+          log(`❌ Lỗi: ${error}`, 'error');
+        }
+
+        // Test read
+        const readRes = await fetch(`${SUPABASE_URL}/rest/v1/ai_stock_insights?limit=1`, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          }
+        });
+        
+        if (readRes.ok) {
+          const data = await readRes.json();
+          log(`📊 Bảng có ${data.length >= 0 ? 'sẵn sàng' : 'lỗi'}`, 'success');
+        }
+
+      } catch (err) {
+        log(`❌ Lỗi: ${err.message}`, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

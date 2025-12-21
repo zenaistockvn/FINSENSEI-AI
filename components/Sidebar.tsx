@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, TrendingUp, Search, Briefcase, Lightbulb, Hexagon, 
+  LayoutDashboard, TrendingUp, Search, Briefcase, Lightbulb, 
   ChevronLeft, ChevronRight, GraduationCap, Bot, X, Command
 } from 'lucide-react';
 
@@ -104,8 +104,12 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isMobileOpen
         {/* Header / Logo */}
         <div className={`px-6 mb-8 flex items-center ${isCollapsed && !isMobileOpen ? 'justify-center px-2' : 'gap-3'}`}>
           <div className="relative">
-            <Hexagon className="w-9 h-9 text-indigo-600 dark:text-indigo-500 fill-indigo-500/20 flex-shrink-0 transition-transform hover:scale-110" />
-            <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full"></div>
+            <img 
+              src="/logo.png" 
+              alt="Finsensei AI Logo" 
+              className="w-9 h-9 flex-shrink-0 transition-transform hover:scale-110"
+            />
+            <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full"></div>
           </div>
           <div className={`overflow-hidden transition-all duration-300 ${isCollapsed && !isMobileOpen ? 'w-0 opacity-0' : 'w-auto opacity-100'}`}>
             {(!isCollapsed || isMobileOpen) && (

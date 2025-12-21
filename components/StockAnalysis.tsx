@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   XAxis,
   YAxis,
@@ -37,6 +37,7 @@ import {
   Globe,
   Share2,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import {
   getVN100Companies,
@@ -58,6 +59,7 @@ import {
   TradingStrategy,
   BrokerRecommendation,
 } from '../services/supabaseClient';
+import AIStockInsight from './AIStockInsight';
 import TradingViewChart from './TradingViewChart';
 
 // --- Types ---
@@ -1484,7 +1486,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/40 p-1 rounded-xl border border-slate-200 dark:border-white/10 overflow-x-auto shadow-inner w-full sm:w-auto">
               {[
                 { id: 'chart', label: 'Biểu đồ nến', icon: BarChart2 },
-                { id: 'earnings', label: 'Phân tích AI', icon: Mic2 },
+                { id: 'earnings', label: 'AI Insight', icon: Sparkles },
                 { id: 'news', label: 'Tin tức', icon: Newspaper }
               ].map((mode) => (
                 <button
@@ -1590,7 +1592,10 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               )
             ) : viewMode === 'earnings' ? (
               <div className="p-4 h-full overflow-auto">
-                <AIEarningsInsight isDark={isDark} stockInfo={stockInfo} />
+                <AIStockInsight 
+                  symbol={selectedSymbol} 
+                  isDark={isDark}
+                />
               </div>
             ) : (
               <div className="p-4 h-full overflow-auto">

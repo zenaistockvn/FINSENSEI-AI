@@ -1,19 +1,23 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
-import { StockData, NewsItem, User, PlanType } from './types';
-import { getTopMovers, getVN100Companies, Company } from './services/supabaseClient';
+import LoginPage from './components/LoginPage';
+import { User, PlanType } from './types';
+import { supabase, getUserProfile, onAuthStateChange, signOut } from './services/authService';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 // Lazy load heavy components for better performance
 const MarketPulse = lazy(() => import('./components/MarketPulse'));
-const StockHealth = lazy(() => import('./components/StockHealth'));
 const SmartRankings = lazy(() => import('./components/SmartRankings'));
+const MarketSentimentGauge = lazy(() => import('./components/MarketSentimentGauge'));
+const FinSenseiIntro = lazy(() => import('./components/FinSenseiIntro'));
 const ChatWidget = lazy(() => import('./components/ChatWidget'));
 const AIScreener = lazy(() => import('./components/AIScreener'));
 const StockAnalysis = lazy(() => import('./components/StockAnalysis'));
 const GuruPortfolios = lazy(() => import('./components/GuruPortfolios'));
 const SenAssistant = lazy(() => import('./components/SenAssistant'));
-const UserProfile = lazy(() => import('./components/UserProfile'));
+const UserProfileComponent = lazy(() => import('./components/UserProfile'));
+const PortfolioOptimizer = lazy(() => import('./components/PortfolioOptimizer'));
 
 // Loading fallback component
 const LoadingFallback: React.FC<{ height?: string }> = ({ height = '200px' }) => (
@@ -32,107 +36,99 @@ const App: React.FC = () => {
   const [isDark, setIsDark] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // User State - Init as null to simulate fetching
-  const [user, setUser] = useState<User | null>(null);
-  
-  // Stock data from Supabase
-  const [currentStock, setCurrentStock] = useState<StockData | null>(null);
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [authUser, setAuthUser] = useState<SupabaseUser | null>(null);
 
+  // User State
+  const [user, setUser] = useState<User | null>(null);
+
+  // Check authentication on mount
   useEffect(() => {
-    // Simulate API Fetch for user
-    const fetchUserData = async () => {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setUser({
-            name: 'Nguyễn Văn A',
-            email: 'nguyenvana@gmail.com',
-            avatar: 'https://i.pravatar.cc/150?img=11',
-            plan: 'basic',
-            memberSince: '15/05/2024'
-        });
-    };
-    
-    // Fetch real stock data from Supabase
-    const fetchStockData = async () => {
+    const checkAuth = async () => {
       try {
-        const [movers, companies] = await Promise.all([
-          getTopMovers(1),
-          getVN100Companies()
-        ]);
-        
-        if (movers.length > 0) {
-          const topStock = movers[0];
-          const company = companies.find((c: Company) => c.symbol === topStock.symbol);
-          
-          const priceChange = topStock.close_price - topStock.open_price;
-          const changePercent = topStock.open_price > 0 
-            ? (priceChange / topStock.open_price) * 100 
-            : 0;
-          
-          setCurrentStock({
-            ticker: topStock.symbol,
-            name: company?.company_name || topStock.symbol,
-            price: topStock.close_price,
-            change: Math.round(priceChange),
-            changePercent: Math.round(changePercent * 100) / 100,
-            currency: 'VND',
-            rsRating: Math.min(95, Math.floor(topStock.volume / 100000)),
-            fundamentalScore: 70 + Math.floor(Math.random() * 20)
-          });
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setAuthUser(session.user);
+          setIsAuthenticated(true);
+          await loadUserProfile(session.user);
         } else {
-          // Fallback to default stock if no data
-          setCurrentStock({
-            ticker: 'VNM',
-            name: 'Vinamilk',
-            price: 68000,
-            change: 500,
-            changePercent: 0.74,
-            currency: 'VND',
-            rsRating: 85,
-            fundamentalScore: 78
-          });
+          setIsAuthenticated(false);
         }
       } catch (error) {
-        console.error('Error fetching stock data:', error);
-        // Fallback
-        setCurrentStock({
-          ticker: 'VNM',
-          name: 'Vinamilk',
-          price: 68000,
-          change: 500,
-          changePercent: 0.74,
-          currency: 'VND',
-          rsRating: 85,
-          fundamentalScore: 78
-        });
+        console.error('Auth check error:', error);
+        setIsAuthenticated(false);
       }
     };
-    
-    fetchUserData();
-    fetchStockData();
+
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = onAuthStateChange(async (user) => {
+      if (user) {
+        setAuthUser(user);
+        setIsAuthenticated(true);
+        await loadUserProfile(user);
+      } else {
+        setAuthUser(null);
+        setUser(null);
+        setIsAuthenticated(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const handleUpgrade = (plan: PlanType) => {
-    // In a real app, this would trigger a payment gateway
-    if (confirm(`Bạn có chắc chắn muốn nâng cấp lên gói ${plan.toUpperCase()}?`)) {
-        setUser(prev => prev ? ({ ...prev, plan }) : null);
-        alert('Nâng cấp thành công! Chào mừng bạn đến với gói ' + plan.toUpperCase());
+  // Load user profile from Supabase
+  const loadUserProfile = async (authUser: SupabaseUser) => {
+    try {
+      const profile = await getUserProfile(authUser.id);
+      
+      // Convert Supabase profile to app User type
+      const appUser: User = {
+        name: profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
+        email: authUser.email || '',
+        avatar: profile?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.full_name || 'User')}&background=6366f1&color=fff`,
+        plan: (profile?.plan as PlanType) || 'basic',
+        memberSince: new Date(authUser.created_at).toLocaleDateString('vi-VN')
+      };
+      
+      setUser(appUser);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      // Fallback user data
+      setUser({
+        name: authUser.email?.split('@')[0] || 'User',
+        email: authUser.email || '',
+        avatar: `https://ui-avatars.com/api/?name=User&background=6366f1&color=fff`,
+        plan: 'basic',
+        memberSince: new Date().toLocaleDateString('vi-VN')
+      });
     }
   };
 
-  // News data (can be fetched from API later)
-  const currentNews: NewsItem[] = [
-    { id: 1, source: 'VnExpress', title: 'Tin tức NHNN', summary: 'Ngân hàng Nhà nước giảm lãi suất điều hành, NHNN thông báo giảm lãi suất tái cấp vốn...' },
-    { id: 2, source: 'Cafef', title: 'Thị trường tăng điểm', summary: 'Thị trường chứng khoán Việt Nam vượt mốc 1,300 điểm, thanh khoản tăng...' },
-    { id: 3, source: 'NDH', title: 'Tin tức xuất khẩu', summary: 'Doanh nghiệp xuất khẩu hưởng lợi từ tỷ giá. Các công ty ngành thủy sản, dệt may...' },
-  ];
+  const handleUpgrade = (plan: PlanType) => {
+    if (confirm(`Bạn có chắc chắn muốn nâng cấp lên gói ${plan.toUpperCase()}?`)) {
+      setUser(prev => prev ? ({ ...prev, plan }) : null);
+      alert('Nâng cấp thành công! Chào mừng bạn đến với gói ' + plan.toUpperCase());
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    setAuthUser(null);
+    setIsAuthenticated(false);
+  };
 
   const toggleTheme = () => setIsDark(!isDark);
 
-  // Listen for navigation events from other components (e.g., AIScreener)
+  // Listen for navigation events
   useEffect(() => {
     const handleNavigateToAnalysis = (e: CustomEvent) => {
       setActiveTab('analysis');
-      // Small delay to ensure tab switch happens first
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('selectStock', { detail: e.detail }));
       }, 100);
@@ -151,22 +147,32 @@ const App: React.FC = () => {
       case 'dashboard':
         return (
           <div className="space-y-6 animate-fade-in-up">
+            {/* Market Overview */}
             <Suspense fallback={<LoadingFallback height="120px" />}>
               <MarketPulse />
             </Suspense>
+            
+            {/* Main Grid: 2 columns on large screens */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Suspense fallback={<LoadingFallback height="400px" />}>
-                <StockHealth stock={currentStock || undefined} news={currentNews} isDark={isDark} />
-              </Suspense>
-              <Suspense fallback={<LoadingFallback height="400px" />}>
-                <SmartRankings />
-              </Suspense>
-            </div>
-            <div className="glass-panel p-8 rounded-2xl flex items-center justify-center border-t border-slate-200 dark:border-white/5 opacity-60">
-                <div className="text-center">
-                    <h3 className="text-xl font-bold text-slate-500 dark:text-slate-400 mb-2">Khu vực phân tích nâng cao</h3>
-                    <p className="text-slate-500">Nhiều biểu đồ dữ liệu hơn sẽ xuất hiện ở đây.</p>
-                </div>
+              {/* Left Column: FinSensei Intro + Sentiment */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Giới thiệu FinSensei AI và SEN */}
+                <Suspense fallback={<LoadingFallback height="240px" />}>
+                  <FinSenseiIntro isDark={isDark} onTrySen={() => setActiveTab('sen_assistant')} />
+                </Suspense>
+                
+                {/* Đồng hồ đo Tâm lý Thị trường */}
+                <Suspense fallback={<LoadingFallback height="220px" />}>
+                  <MarketSentimentGauge isDark={isDark} />
+                </Suspense>
+              </div>
+              
+              {/* Right Column: Smart Rankings */}
+              <div className="lg:col-span-1">
+                <Suspense fallback={<LoadingFallback height="480px" />}>
+                  <SmartRankings />
+                </Suspense>
+              </div>
             </div>
           </div>
         );
@@ -197,18 +203,14 @@ const App: React.FC = () => {
       case 'profile':
         return (
           <Suspense fallback={<LoadingFallback height="400px" />}>
-            <UserProfile user={user} onUpgrade={handleUpgrade} isDark={isDark} />
+            <UserProfileComponent user={user} onUpgrade={handleUpgrade} isDark={isDark} />
           </Suspense>
         );
       case 'portfolio':
         return (
-          <div className="flex items-center justify-center h-full min-h-[400px]" role="status">
-            <div className="text-center text-slate-500">
-              <div className="text-4xl mb-4 opacity-30" aria-hidden="true">💼</div>
-              <p className="text-xl font-semibold mb-2 text-slate-700 dark:text-slate-300">Danh mục SENAI</p>
-              <p>Tính năng quản lý danh mục đang được phát triển.</p>
-            </div>
-          </div>
+          <Suspense fallback={<LoadingFallback height="500px" />}>
+            <PortfolioOptimizer isDark={isDark} />
+          </Suspense>
         );
       default:
         return (
@@ -223,26 +225,47 @@ const App: React.FC = () => {
     }
   };
 
-  // Loading Screen
+  // Auth Loading Screen
+  if (isAuthenticated === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 bg-indigo-500 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <p className="text-slate-400 font-medium animate-pulse tracking-wide">Đang kiểm tra đăng nhập...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show Login Page if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
+  // Loading user data
   if (!user) {
     return (
       <div className={`flex h-screen items-center justify-center bg-slate-50 dark:bg-[#050511] transition-colors duration-300 ${isDark ? 'dark' : ''}`}>
-         <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-                <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-8 h-8 bg-indigo-500 rounded-full animate-pulse"></div>
-                </div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 bg-indigo-500 rounded-full animate-pulse"></div>
             </div>
-            <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse tracking-wide">Đang tải dữ liệu người dùng...</p>
-         </div>
+          </div>
+          <p className="text-slate-500 dark:text-slate-400 font-medium animate-pulse tracking-wide">Đang tải dữ liệu người dùng...</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className={isDark ? 'dark' : ''}>
-      {/* Skip to main content link for accessibility */}
       <a href="#main-content" className="skip-link">
         Chuyển đến nội dung chính
       </a>
@@ -258,11 +281,11 @@ const App: React.FC = () => {
         <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative" role="main" aria-label="Nội dung chính">
           {/* Background Grid Effect */}
           <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-100 transition-opacity" 
-              aria-hidden="true"
-              style={{ 
-                backgroundImage: `radial-gradient(circle at 50% 50%, ${isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(148, 163, 184, 0.2)'} 1px, transparent 1px)`, 
-                backgroundSize: '40px 40px' 
-              }}>
+            aria-hidden="true"
+            style={{ 
+              backgroundImage: `radial-gradient(circle at 50% 50%, ${isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(148, 163, 184, 0.2)'} 1px, transparent 1px)`, 
+              backgroundSize: '40px 40px' 
+            }}>
           </div>
           
           {/* Ambient colored spots */}
@@ -277,9 +300,9 @@ const App: React.FC = () => {
             onMenuClick={() => setIsMobileMenuOpen(true)}
             onSelectStock={(symbol) => {
               setActiveTab('analysis');
-              // Dispatch custom event for StockAnalysis to pick up
               window.dispatchEvent(new CustomEvent('selectStock', { detail: symbol }));
             }}
+            onLogout={handleLogout}
           />
 
           {/* Main Content Container */}
@@ -293,7 +316,6 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Hide Floating Chat Widget if we are on the dedicated Chat Page or Profile Page */}
           {activeTab !== 'sen_assistant' && activeTab !== 'profile' && (
             <Suspense fallback={null}>
               <ChatWidget />

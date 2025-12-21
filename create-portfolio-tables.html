@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Tạo Portfolio Tables - SENAI</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { color: #818cf8; }
+    .btn { background: #6366f1; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; }
+    .btn:hover { background: #4f46e5; }
+    .btn:disabled { background: #475569; cursor: not-allowed; }
+    .btn-success { background: #10b981; }
+    .btn-success:hover { background: #059669; }
+    .log { background: #1e293b; padding: 15px; border-radius: 8px; margin-top: 20px; max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 13px; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .info { color: #60a5fa; }
+    .warning { color: #fbbf24; }
+    pre { white-space: pre-wrap; word-wrap: break-word; background: #0f172a; padding: 10px; border-radius: 4px; }
+    .card { background: #1e293b; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .sql-box { background: #0f172a; padding: 15px; border-radius: 8px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗄️ Tạo Portfolio Tables</h1>
+    <p>Tạo các bảng cần thiết cho AI Portfolio Optimizer</p>
+    
+    <div class="card">
+      <h3 style="color: #818cf8; margin-top: 0;">📋 Các bảng cần tạo:</h3>
+      <ul>
+        <li><strong>user_portfolios</strong> - Danh mục đầu tư của user</li>
+        <li><strong>portfolio_stocks</strong> - Cổ phiếu trong danh mục</li>
+        <li><strong>user_risk_profiles</strong> - Hồ sơ rủi ro của user</li>
+      </ul>
+    </div>
+    
+    <div style="margin: 20px 0;">
+      <button class="btn" onclick="checkTables()">🔍 Kiểm tra Tables</button>
+      <button class="btn btn-success" onclick="testCreatePortfolio()">🧪 Test Tạo Portfolio</button>
+      <button class="btn" onclick="showSQL()">📄 Hiện SQL</button>
+      <button class="btn" onclick="clearLog()">🗑️ Xóa Log</button>
+    </div>
+    
+    <div class="log" id="log"></div>
+    
+    <div class="card" id="sqlSection" style="display: none;">
+      <h3 style="color: #818cf8; margin-top: 0;">📄 SQL để tạo tables</h3>
+      <p style="color: #fbbf24;">⚠️ Copy SQL này và chạy trong <strong>Supabase Dashboard > SQL Editor</strong></p>
+      <button class="btn" onclick="copySQL()">📋 Copy SQL</button>
+      <div class="sql-box" id="sqlContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
+
+    function log(msg, type = 'info') {
+      const logEl = document.getElementById('log');
+      const time = new Date().toLocaleTimeString();
+      logEl.innerHTML += `<div class="${type}">[${time}] ${msg}</div>`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('log').innerHTML = '';
+    }
+
+    async function checkTables() {
+      log('🔍 Kiểm tra các tables...', 'info');
+      
+      const tables = ['user_portfolios', 'portfolio_stocks', 'user_risk_profiles'];
+      let allExist = true;
+      
+      for (const table of tables) {
+        try {
+          const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?limit=1`, {
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`
+            }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            log(`✅ Table "${table}" tồn tại (${data.length} records)`, 'success');
+          } else {
+            const errorText = await response.text();
+            log(`❌ Table "${table}" - Lỗi ${response.status}: ${errorText}`, 'error');
+            allExist = false;
+          }
+        } catch (error) {
+          log(`❌ Lỗi kiểm tra "${table}": ${error.message}`, 'error');
+          allExist = false;
+        }
+      }
+      
+      if (allExist) {
+        log('🎉 Tất cả tables đã sẵn sàng! Có thể sử dụng Portfolio Optimizer.', 'success');
+      } else {
+        log('⚠️ Một số tables chưa tồn tại. Vui lòng chạy SQL trong Supabase Dashboard.', 'warning');
+      }
+    }
+
+    async function testCreatePortfolio() {
+      log('🧪 Test tạo portfolio mới...', 'info');
+      
+      const testUserId = 'test_user_' + Math.random().toString(36).substr(2, 9);
+      const testPortfolio = {
+        user_id: testUserId,
+        name: 'Test Portfolio ' + new Date().toISOString(),
+        description: 'Portfolio tạo để test',
+        is_default: true
+      };
+      
+      log(`📤 Gửi request tạo portfolio cho user: ${testUserId}`, 'info');
+      
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/user_portfolios`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(testPortfolio)
+        });
+        
+        const responseText = await response.text();
+        log(`📥 Response status: ${response.status}`, response.ok ? 'success' : 'error');
+        log(`📥 Response body: ${responseText}`, response.ok ? 'info' : 'error');
+        
+        if (response.ok) {
+          const data = JSON.parse(responseText);
+          log(`✅ Tạo portfolio thành công! ID: ${data[0]?.id}`, 'success');
+          
+          // Clean up - delete test portfolio
+          if (data[0]?.id) {
+            log('🗑️ Xóa portfolio test...', 'info');
+            const deleteResponse = await fetch(`${SUPABASE_URL}/rest/v1/user_portfolios?id=eq.${data[0].id}`, {
+              method: 'DELETE',
+              headers
+            });
+            if (deleteResponse.ok) {
+              log('✅ Đã xóa portfolio test', 'success');
+            }
+          }
+        } else {
+          log('❌ Lỗi tạo portfolio. Có thể table chưa được tạo.', 'error');
+          log('👉 Vui lòng chạy SQL trong Supabase Dashboard > SQL Editor', 'warning');
+        }
+      } catch (error) {
+        log(`❌ Exception: ${error.message}`, 'error');
+      }
+    }
+
+    const SQL_CONTENT = `-- =============================================
+-- PORTFOLIO OPTIMIZER TABLES
+-- Chạy SQL này trong Supabase Dashboard > SQL Editor
+-- =============================================
+
+-- 1. BẢNG USER_PORTFOLIOS
+CREATE TABLE IF NOT EXISTS user_portfolios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  name VARCHAR(100) NOT NULL DEFAULT 'Danh mục chính',
+  description TEXT,
+  is_default BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 2. BẢNG PORTFOLIO_STOCKS
+CREATE TABLE IF NOT EXISTS portfolio_stocks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portfolio_id UUID REFERENCES user_portfolios(id) ON DELETE CASCADE,
+  symbol VARCHAR(10) NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  avg_price DECIMAL(12,2) NOT NULL CHECK (avg_price > 0),
+  buy_date DATE,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(portfolio_id, symbol)
+);
+
+-- 3. BẢNG USER_RISK_PROFILES
+CREATE TABLE IF NOT EXISTS user_risk_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL UNIQUE,
+  profile_type VARCHAR(20) CHECK (profile_type IN ('conservative', 'balanced', 'growth', 'aggressive')),
+  score INTEGER CHECK (score >= 0 AND score <= 100),
+  answers JSONB,
+  rebalance_threshold DECIMAL(5,2) DEFAULT 5.0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- INDEXES
+CREATE INDEX IF NOT EXISTS idx_user_portfolios_user_id ON user_portfolios(user_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_stocks_portfolio_id ON portfolio_stocks(portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_user_risk_profiles_user_id ON user_risk_profiles(user_id);
+
+-- ENABLE RLS
+ALTER TABLE user_portfolios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE portfolio_stocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_risk_profiles ENABLE ROW LEVEL SECURITY;
+
+-- RLS POLICIES (Allow all for anon key)
+DROP POLICY IF EXISTS "Allow all user_portfolios" ON user_portfolios;
+CREATE POLICY "Allow all user_portfolios" ON user_portfolios FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all portfolio_stocks" ON portfolio_stocks;
+CREATE POLICY "Allow all portfolio_stocks" ON portfolio_stocks FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all user_risk_profiles" ON user_risk_profiles;
+CREATE POLICY "Allow all user_risk_profiles" ON user_risk_profiles FOR ALL USING (true) WITH CHECK (true);
+
+-- TRIGGER để tự động cập nhật updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_user_portfolios_updated_at ON user_portfolios;
+CREATE TRIGGER update_user_portfolios_updated_at
+    BEFORE UPDATE ON user_portfolios
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_portfolio_stocks_updated_at ON portfolio_stocks;
+CREATE TRIGGER update_portfolio_stocks_updated_at
+    BEFORE UPDATE ON portfolio_stocks
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_user_risk_profiles_updated_at ON user_risk_profiles;
+CREATE TRIGGER update_user_risk_profiles_updated_at
+    BEFORE UPDATE ON user_risk_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+`;
+
+    function showSQL() {
+      const section = document.getElementById('sqlSection');
+      section.style.display = section.style.display === 'none' ? 'block' : 'none';
+      document.getElementById('sqlContent').innerHTML = '<pre>' + SQL_CONTENT + '</pre>';
+    }
+
+    function copySQL() {
+      navigator.clipboard.writeText(SQL_CONTENT).then(() => {
+        log('✅ Đã copy SQL vào clipboard!', 'success');
+      }).catch(err => {
+        log('❌ Lỗi copy: ' + err.message, 'error');
+      });
+    }
+
+    // Auto check on load
+    window.onload = () => {
+      log('👋 Chào mừng! Nhấn "Kiểm tra Tables" để bắt đầu.', 'info');
+    };
+  </script>
+</body>
+</html>

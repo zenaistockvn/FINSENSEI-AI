@@ -1,7 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Award, BookOpen, TrendingUp, DollarSign, Activity, Users, ArrowRight, CheckCircle2, Zap, Target, Shield, Briefcase, Eye, Search, Layers, Anchor, Flame, Gem } from 'lucide-react';
-import { getVN100Companies, getMultipleLatestPrices, Company, StockPrice } from '../services/supabaseClient';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Award, BookOpen, TrendingUp, DollarSign, Activity, Users, ArrowRight, CheckCircle2, Zap, Target, Shield, Briefcase, Eye, Search, Layers, Anchor, Flame, Gem, Filter, SortAsc, SortDesc, BarChart3, TrendingDown, RefreshCw } from 'lucide-react';
 
 interface GuruStrategy {
   id: string;
@@ -25,90 +24,103 @@ interface GuruStock {
   metrics: { label: string; value: string }[];
 }
 
+interface GuruStockFromDB {
+  strategy_id: string;
+  strategy_name: string;
+  symbol: string;
+  company_name: string;
+  industry: string;
+  current_price: number;
+  price_change: number;
+  guru_score: number;
+  match_reason: string;
+  metrics: Record<string, string | number>;
+  rank_in_strategy: number;
+  calculation_date: string;
+}
+
 interface GuruPortfoliosProps {
     isDark?: boolean;
 }
 
+type SortField = 'score' | 'change' | 'price';
+type SortOrder = 'asc' | 'desc';
+type FilterType = 'all' | 'positive' | 'negative' | 'high_score';
+
+const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
 const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
   const [activeStrategy, setActiveStrategy] = useState<string>('buffett');
-  const [realStocks, setRealStocks] = useState<GuruStock[]>([]);
+  const [stocksByStrategy, setStocksByStrategy] = useState<Map<string, GuruStock[]>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [sortField, setSortField] = useState<SortField>('score');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Fetch real stock data from Supabase
-  useEffect(() => {
-    const fetchStocks = async () => {
-      try {
-        const companies = await getVN100Companies();
-        const topCompanies = companies.slice(0, 10);
-        const symbols = topCompanies.map((c: Company) => c.symbol);
-        const prices = await getMultipleLatestPrices(symbols);
+  // Fetch guru stocks from Supabase
+  const fetchGuruStocks = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/guru_stocks?order=calculation_date.desc,rank_in_strategy.asc&limit=100`,
+        {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          }
+        }
+      );
+      
+      if (!response.ok) throw new Error('Failed to fetch');
+      
+      const data: GuruStockFromDB[] = await response.json();
+      
+      // Group by strategy
+      const grouped = new Map<string, GuruStock[]>();
+      
+      data.forEach(stock => {
+        const guruStock: GuruStock = {
+          ticker: stock.symbol,
+          company: stock.company_name,
+          price: stock.current_price || 0,
+          change: stock.price_change || 0,
+          score: stock.guru_score,
+          reason: stock.match_reason,
+          metrics: Object.entries(stock.metrics || {}).map(([label, value]) => ({
+            label,
+            value: String(value)
+          }))
+        };
         
-        const stocks: GuruStock[] = topCompanies.map((company: Company) => {
-          const priceData = prices.find((p: StockPrice) => p.symbol === company.symbol);
-          const change = priceData 
-            ? ((priceData.close_price - priceData.open_price) / priceData.open_price) * 100 
-            : 0;
-          
-          return {
-            ticker: company.symbol,
-            company: company.company_name,
-            price: priceData ? priceData.close_price : 0,
-            change: Math.round(change * 100) / 100,
-            score: Math.floor(80 + Math.random() * 15),
-            reason: `${company.industry || 'Ngành'} có tiềm năng tăng trưởng. Khối lượng giao dịch ${priceData?.volume ? (priceData.volume > 500000 ? 'cao' : 'ổn định') : 'đang cập nhật'}.`,
-            metrics: [
-              { label: 'ROE', value: `${(15 + Math.random() * 10).toFixed(1)}%` },
-              { label: 'P/E', value: `${(12 + Math.random() * 8).toFixed(1)}` },
-              { label: 'Margin', value: `${(20 + Math.random() * 20).toFixed(0)}%` }
-            ]
-          };
-        });
-        
-        setRealStocks(stocks);
-      } catch (error) {
-        console.error('Error fetching guru stocks:', error);
-      } finally {
-        setLoading(false);
+        if (!grouped.has(stock.strategy_id)) {
+          grouped.set(stock.strategy_id, []);
+        }
+        grouped.get(stock.strategy_id)!.push(guruStock);
+      });
+      
+      setStocksByStrategy(grouped);
+      
+      if (data.length > 0) {
+        setLastUpdated(data[0].calculation_date);
       }
-    };
-    
-    fetchStocks();
+      
+    } catch (error) {
+      console.error('Error fetching guru stocks:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGuruStocks();
   }, []);
 
-  // Use real stocks for strategies
+  // Get stocks for a strategy from database
   const getStrategyStocks = (strategyId: string): GuruStock[] => {
-    if (loading || realStocks.length === 0) return [];
-    
-    switch (strategyId) {
-      case 'buffett':
-        return realStocks.slice(0, 3).map(s => ({
-          ...s,
-          reason: `Lợi thế cạnh tranh trong ngành. ROE duy trì ổn định, dòng tiền hoạt động dồi dào.`
-        }));
-      case 'minervini':
-        return realStocks.slice(3, 5).map(s => ({
-          ...s,
-          reason: `Mẫu hình VCP với volume cạn kiệt. Điểm pivot tiềm năng.`,
-          metrics: [
-            { label: 'Contraction', value: '3T' },
-            { label: 'Pivot', value: (s.price / 1000).toFixed(1) },
-            { label: 'Trend', value: 'Stage 2' }
-          ]
-        }));
-      case 'spiritual':
-        return realStocks.slice(5, 6).map(s => ({
-          ...s,
-          score: 99,
-          reason: `Thầy bảo mã này hợp mệnh. Múc xúc húc!`,
-          metrics: [
-            { label: 'Niềm tin', value: 'Vô cực' },
-            { label: 'Đếm cua', value: '10/10' },
-            { label: 'Tâm linh', value: 'Mạnh' }
-          ]
-        }));
-      default:
-        return realStocks.slice(0, 2);
-    }
+    return stocksByStrategy.get(strategyId) || [];
   };
 
   const strategies: GuruStrategy[] = [
@@ -129,6 +141,54 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
       stocks: getStrategyStocks('buffett')
     },
     {
+      id: 'lynch',
+      name: 'Peter Lynch',
+      title: 'Tăng trưởng hợp lý (GARP)',
+      description: 'Tìm kiếm cổ phiếu tăng trưởng với P/E hợp lý. Đầu tư vào những gì bạn hiểu - các doanh nghiệp quen thuộc trong cuộc sống hàng ngày.',
+      icon: Target,
+      color: 'text-blue-500',
+      gradient: 'from-blue-500 via-cyan-500 to-blue-600',
+      criteria: [
+        'PEG Ratio < 1 (P/E / Tốc độ tăng trưởng EPS)',
+        'Tăng trưởng EPS 15-25%/năm liên tục',
+        'Nợ/Vốn chủ sở hữu < 35%',
+        'Doanh nghiệp dễ hiểu, quen thuộc'
+      ],
+      stocks: getStrategyStocks('lynch')
+    },
+    {
+      id: 'graham',
+      name: 'Benjamin Graham',
+      title: 'Cha đẻ Đầu tư Giá trị',
+      description: 'Mua cổ phiếu dưới giá trị nội tại với biên an toàn (Margin of Safety). Tập trung vào các công ty có tài chính vững mạnh và định giá rẻ.',
+      icon: Shield,
+      color: 'text-emerald-500',
+      gradient: 'from-emerald-500 via-green-500 to-teal-600',
+      criteria: [
+        'P/E < 15 và P/B < 1.5',
+        'Current Ratio > 2 (Khả năng thanh toán)',
+        'Cổ tức liên tục nhiều năm',
+        'Không lỗ trong 5 năm gần nhất'
+      ],
+      stocks: getStrategyStocks('graham')
+    },
+    {
+      id: 'canslim',
+      name: "William O'Neil",
+      title: 'CAN SLIM - Siêu tăng trưởng',
+      description: 'Kết hợp phân tích cơ bản và kỹ thuật để tìm cổ phiếu tăng trưởng mạnh. Mua khi breakout khỏi nền giá với volume tăng đột biến.',
+      icon: Flame,
+      color: 'text-orange-500',
+      gradient: 'from-orange-500 via-red-500 to-orange-600',
+      criteria: [
+        'EPS quý gần nhất tăng > 25%',
+        'EPS hàng năm tăng > 25% trong 3 năm',
+        'Sản phẩm/dịch vụ mới, đột phá',
+        'RS Rating > 80 (Sức mạnh tương đối)'
+      ],
+      stocks: getStrategyStocks('canslim')
+    },
+    {
       id: 'minervini',
       name: 'Mark Minervini',
       title: 'Phù thủy Chứng khoán (VCP)',
@@ -139,30 +199,73 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
       criteria: [
         'Giá nằm trên MA50, MA150 và MA200',
         'Mẫu hình VCP với 2-3 lần thu hẹp (Contraction)',
-        'Khối lượng cạn kiệt (Dry up) ở lần thu hẹp cuối cùng',
+        'Khối lượng cạn kiệt (Dry up) ở lần thu hẹp cuối',
         'RS Rating > 70'
       ],
       stocks: getStrategyStocks('minervini')
     },
     {
-        id: 'spiritual',
-        name: 'Hệ Tâm Linh',
-        title: 'Đầu tư bằng Niềm tin & Vũ trụ',
-        description: 'Trường phái dành cho các nhà đầu tư hệ "mách bảo". Bỏ qua P/E, P/B, chỉ quan tâm xem đêm qua tổ tiên báo mộng mã gì.',
-        icon: Eye,
-        color: 'text-purple-500',
-        gradient: 'from-purple-500 via-fuchsia-500 to-pink-500',
-        criteria: [
-          'Tên mã hợp phong thủy, hợp mệnh',
-          'Đêm qua mơ thấy màu tím (trần)',
-          'Tổ tiên mách bảo tất tay (All-in)',
-          'Thầy bói bảo năm nay hợp mệnh Hỏa'
-        ],
-        stocks: getStrategyStocks('spiritual')
-      }
+      id: 'dalio',
+      name: 'Ray Dalio',
+      title: 'All Weather - Mọi thời tiết',
+      description: 'Xây dựng danh mục cân bằng có thể hoạt động tốt trong mọi điều kiện kinh tế. Đa dạng hóa theo loại tài sản và tương quan.',
+      icon: Anchor,
+      color: 'text-indigo-500',
+      gradient: 'from-indigo-500 via-purple-500 to-indigo-600',
+      criteria: [
+        'Beta thấp, ít biến động so với thị trường',
+        'Tương quan thấp giữa các cổ phiếu',
+        'Cổ tức ổn định, dòng tiền đều đặn',
+        'Phân bổ đa ngành, đa lĩnh vực'
+      ],
+      stocks: getStrategyStocks('dalio')
+    }
   ];
 
   const currentStrategy = strategies.find(s => s.id === activeStrategy) || strategies[0];
+
+  // Filter and sort stocks
+  const filteredAndSortedStocks = useMemo(() => {
+    let stocks = [...currentStrategy.stocks];
+    
+    // Apply search filter
+    if (searchQuery) {
+      stocks = stocks.filter(s => 
+        s.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.company.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Apply type filter
+    switch (filterType) {
+      case 'positive':
+        stocks = stocks.filter(s => s.change >= 0);
+        break;
+      case 'negative':
+        stocks = stocks.filter(s => s.change < 0);
+        break;
+      case 'high_score':
+        stocks = stocks.filter(s => s.score >= 85);
+        break;
+    }
+    
+    // Apply sorting
+    stocks.sort((a, b) => {
+      const multiplier = sortOrder === 'asc' ? 1 : -1;
+      return (a[sortField] - b[sortField]) * multiplier;
+    });
+    
+    return stocks;
+  }, [currentStrategy.stocks, searchQuery, filterType, sortField, sortOrder]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
@@ -173,9 +276,24 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
                 <div className="p-3 bg-amber-100 dark:bg-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400">
                     <Award size={32} />
                 </div>
-                <div>
+                <div className="flex-1">
                     <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Danh mục Guru</h1>
                     <p className="text-slate-500 dark:text-slate-400">Học từ những huyền thoại đầu tư. AI lọc cổ phiếu theo các trường phái kinh điển.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    {lastUpdated && (
+                      <span className="text-xs text-slate-500">
+                        Cập nhật: {new Date(lastUpdated).toLocaleDateString('vi-VN')}
+                      </span>
+                    )}
+                    <button
+                      onClick={fetchGuruStocks}
+                      disabled={loading}
+                      className="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                      title="Làm mới dữ liệu"
+                    >
+                      <RefreshCw size={18} className={`text-slate-600 dark:text-slate-300 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
             </div>
          </div>
@@ -267,6 +385,91 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
                 </div>
             </div>
 
+            {/* Filter & Sort Toolbar */}
+            <div className="glass-panel p-4 rounded-xl border border-slate-200 dark:border-white/5">
+              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                {/* Search */}
+                <div className="relative flex-1 max-w-xs">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Tìm mã cổ phiếu..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                
+                {/* Filters */}
+                <div className="flex items-center gap-2">
+                  <Filter size={16} className="text-slate-400" />
+                  <div className="flex gap-1">
+                    {[
+                      { id: 'all', label: 'Tất cả' },
+                      { id: 'positive', label: 'Tăng', icon: TrendingUp },
+                      { id: 'negative', label: 'Giảm', icon: TrendingDown },
+                      { id: 'high_score', label: 'Score ≥85' }
+                    ].map((filter) => (
+                      <button
+                        key={filter.id}
+                        onClick={() => setFilterType(filter.id as FilterType)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1 ${
+                          filterType === filter.id
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {filter.icon && <filter.icon size={12} />}
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Sort */}
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={16} className="text-slate-400" />
+                  <div className="flex gap-1">
+                    {[
+                      { id: 'score', label: 'Điểm' },
+                      { id: 'change', label: '% Thay đổi' },
+                      { id: 'price', label: 'Giá' }
+                    ].map((sort) => (
+                      <button
+                        key={sort.id}
+                        onClick={() => toggleSort(sort.id as SortField)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1 ${
+                          sortField === sort.id
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {sort.label}
+                        {sortField === sort.id && (
+                          sortOrder === 'desc' ? <SortDesc size={12} /> : <SortAsc size={12} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Results count */}
+              <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700/50 flex items-center justify-between">
+                <span className="text-xs text-slate-500">
+                  Hiển thị {filteredAndSortedStocks.length} / {currentStrategy.stocks.length} cổ phiếu
+                </span>
+                {(searchQuery || filterType !== 'all') && (
+                  <button
+                    onClick={() => { setSearchQuery(''); setFilterType('all'); }}
+                    className="text-xs text-indigo-500 hover:text-indigo-600 font-medium"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 gap-4">
                 {loading ? (
                     // Loading skeleton
@@ -286,8 +489,8 @@ const GuruPortfolios: React.FC<GuruPortfoliosProps> = ({ isDark = true }) => {
                             </div>
                         </div>
                     ))
-                ) : currentStrategy.stocks.length > 0 ? (
-                    currentStrategy.stocks.map((stock) => (
+                ) : filteredAndSortedStocks.length > 0 ? (
+                    filteredAndSortedStocks.map((stock) => (
                     <div key={stock.ticker} className="glass-panel p-5 rounded-xl border border-slate-200 dark:border-white/5 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all duration-300 group">
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
                             <div className="flex items-center gap-4">

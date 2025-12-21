@@ -28,7 +28,7 @@ AI Portfolio Optimizer là tính năng giúp nhà đầu tư tối ưu hóa danh
 1. WHEN người dùng truy cập trang Portfolio Optimizer THEN hệ thống SHALL hiển thị form nhập danh mục với các trường: mã cổ phiếu, số lượng, giá mua trung bình
 2. WHEN người dùng nhập mã cổ phiếu THEN hệ thống SHALL tự động gợi ý và validate mã cổ phiếu từ danh sách VN100
 3. WHEN người dùng hoàn thành nhập danh mục THEN hệ thống SHALL tính toán và hiển thị tổng giá trị danh mục, tỷ trọng từng mã, lãi/lỗ hiện tại
-4. WHEN người dùng muốn lưu danh mục THEN hệ thống SHALL lưu vào local storage để sử dụng lại
+4. WHEN người dùng muốn lưu danh mục THEN hệ thống SHALL lưu vào Supabase database để sử dụng lại trên mọi thiết bị
 5. IF người dùng nhập mã cổ phiếu không hợp lệ THEN hệ thống SHALL hiển thị thông báo lỗi và không cho phép thêm vào danh mục
 
 ### Requirement 2: Phân tích Risk Profile

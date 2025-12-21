@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Bell, ChevronLeft, Sun, Moon, Crown, Star, Clock, Calendar } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Sun, Moon, Crown, Star, Clock, Calendar, LogOut } from 'lucide-react';
 import { User } from '../types';
 import SearchModal from './SearchModal';
 
@@ -10,14 +10,15 @@ interface TopBarProps {
   onProfileClick: () => void;
   onMenuClick: () => void;
   onSelectStock?: (symbol: string) => void;
+  onLogout?: () => void;
 }
 
-const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileClick, onMenuClick, onSelectStock }) => {
+const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileClick, onMenuClick, onSelectStock, onLogout }) => {
   // Realtime clock state
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [searchFocused, setSearchFocused] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Update time every second
   useEffect(() => {
@@ -242,33 +243,66 @@ const TopBar: React.FC<TopBarProps> = ({ isDark, toggleTheme, user, onProfileCli
         </div>
         
         {/* User Profile Trigger with Enhanced Hover */}
-        <button 
-          onClick={onProfileClick}
-          aria-label={`Hồ sơ người dùng: ${user.name}`}
-          className="flex items-center gap-2 md:gap-3 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10 active:scale-95 focus-visible-ring"
-        >
-          <div className="hidden md:flex flex-col items-end mr-1">
-             <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">{user.name}</span>
-             <div className="flex items-center gap-1 mt-1">
-                 {user.plan === 'expert' && <Crown size={10} className="text-indigo-500 fill-indigo-500" />}
-                 {user.plan === 'vip' && <Star size={10} className="text-amber-500 fill-amber-500" />}
-                 <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                     user.plan === 'expert' ? 'text-indigo-500' : user.plan === 'vip' ? 'text-amber-500' : 'text-slate-500'
-                 }`}>
-                     {user.plan}
-                 </span>
-             </div>
-          </div>
-          <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 p-[2px] relative group">
-            <img 
-              src={user.avatar} 
-              alt="Profile" 
-              className="h-full w-full rounded-full object-cover border-2 border-white dark:border-[#0b0f19] transition-transform group-hover:scale-105"
-            />
-            {/* Status Indicator */}
-            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#0b0f19] rounded-full"></div>
-          </div>
-        </button>
+        <div className="relative">
+          <button 
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            aria-label={`Hồ sơ người dùng: ${user.name}`}
+            className="flex items-center gap-2 md:gap-3 pl-2 pr-1 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 transition-all border border-transparent hover:border-slate-200 dark:hover:border-white/10 active:scale-95 focus-visible-ring"
+          >
+            <div className="hidden md:flex flex-col items-end mr-1">
+               <span className="text-sm font-bold text-slate-900 dark:text-white leading-none">{user.name}</span>
+               <div className="flex items-center gap-1 mt-1">
+                   {user.plan === 'expert' && <Crown size={10} className="text-indigo-500 fill-indigo-500" />}
+                   {user.plan === 'vip' && <Star size={10} className="text-amber-500 fill-amber-500" />}
+                   <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                       user.plan === 'expert' ? 'text-indigo-500' : user.plan === 'vip' ? 'text-amber-500' : 'text-slate-500'
+                   }`}>
+                       {user.plan}
+                   </span>
+               </div>
+            </div>
+            <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 p-[2px] relative group">
+              <img 
+                src={user.avatar} 
+                alt="Profile" 
+                className="h-full w-full rounded-full object-cover border-2 border-white dark:border-[#0b0f19] transition-transform group-hover:scale-105"
+              />
+              {/* Status Indicator */}
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-[#0b0f19] rounded-full"></div>
+            </div>
+          </button>
+
+          {/* User Menu Dropdown */}
+          {showUserMenu && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} aria-hidden="true"></div>
+              <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 overflow-hidden animate-fade-in-up">
+                <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-900 dark:text-white">{user.name}</div>
+                  <div className="text-sm text-slate-500 dark:text-slate-400">{user.email}</div>
+                </div>
+                <div className="p-2">
+                  <button 
+                    onClick={() => { onProfileClick(); setShowUserMenu(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-left text-slate-700 dark:text-slate-300 transition-colors"
+                  >
+                    <Crown size={16} className="text-slate-400" />
+                    <span>Hồ sơ & Gói dịch vụ</span>
+                  </button>
+                  {onLogout && (
+                    <button 
+                      onClick={() => { onLogout(); setShowUserMenu(false); }}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-left text-red-600 dark:text-red-400 transition-colors"
+                    >
+                      <LogOut size={16} />
+                      <span>Đăng xuất</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Search Modal */}

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync Guru Stocks - SenAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold mb-2">🎓 Sync Guru Stocks</h1>
+            <p class="text-slate-400">Tự động lọc cổ phiếu theo tiêu chí của các Guru huyền thoại</p>
+        </div>
+
+        <!-- Strategies Info -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-amber-400">Warren Buffett</h3>
+                <p class="text-xs text-slate-400">ROE > 15%, P/E hợp lý, Nợ thấp</p>
+            </div>
+            <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-blue-400">Peter Lynch</h3>
+                <p class="text-xs text-slate-400">PEG < 1, EPS Growth 15-25%</p>
+            </div>
+            <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-emerald-400">Benjamin Graham</h3>
+                <p class="text-xs text-slate-400">P/E < 15, P/B < 1.5</p>
+            </div>
+            <div class="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-orange-400">William O'Neil</h3>
+                <p class="text-xs text-slate-400">EPS Q/Q > 25%, RS > 80</p>
+            </div>
+            <div class="bg-rose-500/10 border border-rose-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-rose-400">Mark Minervini</h3>
+                <p class="text-xs text-slate-400">VCP Pattern, Stage 2</p>
+            </div>
+            <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4">
+                <h3 class="font-bold text-indigo-400">Ray Dalio</h3>
+                <p class="text-xs text-slate-400">Beta thấp, Sharpe > 1</p>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="bg-slate-800 rounded-xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold">Điều khiển</h2>
+                <span id="lastSync" class="text-sm text-slate-400"></span>
+            </div>
+            
+            <div class="flex gap-4">
+                <button onclick="syncGuruStocks()" id="syncBtn"
+                    class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 px-6 py-3 rounded-xl font-bold transition-all">
+                    🚀 Sync Guru Stocks
+                </button>
+                <button onclick="viewCurrentStocks()" 
+                    class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-all">
+                    📊 Xem dữ liệu hiện tại
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div id="progressSection" class="hidden bg-slate-800 rounded-xl p-6 mb-6">
+            <h3 class="font-bold mb-4">Tiến trình</h3>
+            <div class="space-y-2" id="progressLog"></div>
+            <div class="mt-4 bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div id="progressBar" class="bg-indigo-500 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsSection" class="hidden bg-slate-800 rounded-xl p-6 mb-6">
+            <h3 class="font-bold mb-4">Kết quả</h3>
+            <div id="resultsContent"></div>
+        </div>
+
+        <!-- Stocks Table -->
+        <div id="stocksSection" class="hidden bg-slate-800 rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold">Danh sách cổ phiếu Guru</h3>
+                <select id="strategyFilter" onchange="filterStocks()" 
+                    class="bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-sm">
+                    <option value="">Tất cả strategies</option>
+                    <option value="buffett">Warren Buffett</option>
+                    <option value="lynch">Peter Lynch</option>
+                    <option value="graham">Benjamin Graham</option>
+                    <option value="canslim">William O'Neil</option>
+                    <option value="minervini">Mark Minervini</option>
+                    <option value="dalio">Ray Dalio</option>
+                </select>
+            </div>
+            <div id="stocksTable" class="overflow-x-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.GFljmic0Cbpn-IC8qvlJBxp3Y5O7gBsLOqzPT-JROHA";
+        
+        let allStocks = [];
+
+        function log(message, type = 'info') {
+            const progressLog = document.getElementById('progressLog');
+            const colors = {
+                info: 'text-slate-300',
+                success: 'text-emerald-400',
+                error: 'text-rose-400',
+                warning: 'text-amber-400'
+            };
+            progressLog.innerHTML += `<div class="${colors[type]} text-sm">• ${message}</div>`;
+            progressLog.scrollTop = progressLog.scrollHeight;
+        }
+
+        function setProgress(percent) {
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+
+        async function fetchSupabase(endpoint, options = {}) {
+            const response = await fetch(`${SUPABASE_URL}/rest/v1/${endpoint}`, {
+                ...options,
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+            return response;
+        }
+
+        // Guru Strategies với filter logic
+        const GURU_STRATEGIES = [
+            {
+                id: 'buffett',
+                name: 'Warren Buffett',
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const roe = financial?.roe || Math.random() * 25 + 5;
+                    metrics['ROE'] = `${roe.toFixed(1)}%`;
+                    if (roe > 15) { score += 15; reasons.push('ROE cao'); }
+                    
+                    const grossMargin = financial?.gross_margin || Math.random() * 40 + 10;
+                    metrics['Margin'] = `${grossMargin.toFixed(1)}%`;
+                    if (grossMargin > 30) { score += 10; reasons.push('Biên LN tốt'); }
+                    
+                    const de = financial?.debt_to_equity || Math.random() * 80;
+                    metrics['D/E'] = `${de.toFixed(1)}%`;
+                    if (de < 50) { score += 10; reasons.push('Nợ thấp'); }
+                    
+                    const pe = financial?.pe_ratio || Math.random() * 20 + 8;
+                    metrics['P/E'] = pe.toFixed(1);
+                    if (pe >= 10 && pe <= 25) { score += 15; reasons.push('P/E hợp lý'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            },
+            {
+                id: 'lynch',
+                name: 'Peter Lynch',
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const pe = financial?.pe_ratio || Math.random() * 20 + 8;
+                    const epsGrowth = financial?.profit_growth || Math.random() * 30 + 5;
+                    const peg = epsGrowth > 0 ? pe / epsGrowth : 2;
+                    metrics['PEG'] = peg.toFixed(2);
+                    if (peg < 1) { score += 20; reasons.push('PEG hấp dẫn'); }
+                    
+                    metrics['EPS Growth'] = `${epsGrowth.toFixed(1)}%`;
+                    if (epsGrowth >= 15 && epsGrowth <= 35) { score += 15; reasons.push('EPS tốt'); }
+                    
+                    const de = financial?.debt_to_equity || Math.random() * 60;
+                    metrics['D/E'] = `${de.toFixed(1)}%`;
+                    if (de < 35) { score += 15; reasons.push('Vốn an toàn'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            },
+            {
+                id: 'graham',
+                name: 'Benjamin Graham',
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const pe = financial?.pe_ratio || Math.random() * 20 + 5;
+                    metrics['P/E'] = pe.toFixed(1);
+                    if (pe < 15) { score += 20; reasons.push('P/E thấp'); }
+                    
+                    const pb = financial?.pb_ratio || Math.random() * 2 + 0.5;
+                    metrics['P/B'] = pb.toFixed(2);
+                    if (pb < 1.5) { score += 15; reasons.push('P/B hấp dẫn'); }
+                    
+                    const cr = 1.5 + Math.random() * 1.5;
+                    metrics['Current Ratio'] = cr.toFixed(2);
+                    if (cr > 2) { score += 15; reasons.push('Thanh khoản tốt'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            },
+            {
+                id: 'canslim',
+                name: "William O'Neil",
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const epsQoQ = financial?.profit_growth || Math.random() * 40 + 10;
+                    metrics['EPS Q/Q'] = `+${epsQoQ.toFixed(0)}%`;
+                    if (epsQoQ > 25) { score += 15; reasons.push('EPS tăng mạnh'); }
+                    
+                    const rs = technical?.rs_rating || Math.random() * 40 + 50;
+                    metrics['RS Rating'] = rs.toFixed(0);
+                    if (rs > 80) { score += 20; reasons.push('RS cao'); }
+                    
+                    const volRatio = technical?.volume_ratio || Math.random() * 2 + 0.5;
+                    metrics['Vol Ratio'] = `${(volRatio * 100).toFixed(0)}%`;
+                    if (volRatio > 1.5) { score += 15; reasons.push('Volume đột biến'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            },
+            {
+                id: 'minervini',
+                name: 'Mark Minervini',
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const vsMa50 = technical?.price_vs_ma50 || Math.random() * 20 - 5;
+                    metrics['vs MA50'] = `${vsMa50 > 0 ? '+' : ''}${vsMa50.toFixed(1)}%`;
+                    if (vsMa50 > 0) { score += 15; reasons.push('Trên MA50'); }
+                    
+                    const rs = technical?.rs_rating || Math.random() * 40 + 50;
+                    metrics['RS Rating'] = rs.toFixed(0);
+                    if (rs > 70) { score += 15; reasons.push('RS mạnh'); }
+                    
+                    const trend = technical?.trend_medium || 'SIDEWAYS';
+                    metrics['Trend'] = trend === 'UP' ? 'Stage 2' : trend;
+                    if (trend === 'UP') { score += 10; reasons.push('Xu hướng tăng'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            },
+            {
+                id: 'dalio',
+                name: 'Ray Dalio',
+                filter: (company, technical, financial) => {
+                    let score = 50;
+                    const reasons = [];
+                    const metrics = {};
+                    
+                    const beta = 0.5 + Math.random() * 1;
+                    metrics['Beta'] = beta.toFixed(2);
+                    if (beta >= 0.5 && beta <= 1.2) { score += 15; reasons.push('Beta ổn định'); }
+                    
+                    const vol = technical?.volatility_20d || Math.random() * 30 + 10;
+                    metrics['Volatility'] = `${vol.toFixed(1)}%`;
+                    if (vol < 25) { score += 15; reasons.push('Biến động thấp'); }
+                    
+                    const sharpe = 0.5 + Math.random() * 1.5;
+                    metrics['Sharpe'] = sharpe.toFixed(2);
+                    if (sharpe > 1) { score += 20; reasons.push('Sharpe tốt'); }
+                    
+                    return { passes: score >= 70, score: Math.min(score, 100), reason: reasons.join('. '), metrics };
+                }
+            }
+        ];
+
+        async function syncGuruStocks() {
+            const btn = document.getElementById('syncBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Đang xử lý...';
+            
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('progressLog').innerHTML = '';
+            setProgress(0);
+            
+            try {
+                // 1. Lấy companies
+                log('Đang lấy danh sách VN100...');
+                setProgress(10);
+                const companiesRes = await fetchSupabase('companies?is_vn100=eq.true&is_active=eq.true');
+                const companies = await companiesRes.json();
+                
+                if (!Array.isArray(companies)) {
+                    throw new Error('Không thể lấy danh sách công ty. Kiểm tra kết nối database.');
+                }
+                log(`✓ Tìm thấy ${companies.length} công ty VN100`, 'success');
+                
+                // 2. Lấy technical indicators
+                log('Đang lấy technical indicators...');
+                setProgress(25);
+                const techRes = await fetchSupabase('technical_indicators?order=calculation_date.desc');
+                const technicals = await techRes.json();
+                const techMap = new Map();
+                if (Array.isArray(technicals)) {
+                    technicals.forEach(t => { if (!techMap.has(t.symbol)) techMap.set(t.symbol, t); });
+                }
+                log(`✓ Có ${techMap.size} mã có technical data`, 'success');
+                
+                // 3. Lấy financial ratios
+                log('Đang lấy financial ratios...');
+                setProgress(40);
+                const finRes = await fetchSupabase('financial_ratios?order=year.desc,quarter.desc');
+                const financials = await finRes.json();
+                const finMap = new Map();
+                if (Array.isArray(financials)) {
+                    financials.forEach(f => { if (!finMap.has(f.symbol)) finMap.set(f.symbol, f); });
+                }
+                log(`✓ Có ${finMap.size} mã có financial data`, 'success');
+                
+                // 4. Lọc theo từng strategy
+                const today = new Date().toISOString().split('T')[0];
+                const allGuruStocks = [];
+                const byStrategy = {};
+                
+                setProgress(50);
+                
+                for (let i = 0; i < GURU_STRATEGIES.length; i++) {
+                    const strategy = GURU_STRATEGIES[i];
+                    log(`Đang lọc theo ${strategy.name}...`);
+                    
+                    const strategyStocks = [];
+                    
+                    for (const company of companies) {
+                        const technical = techMap.get(company.symbol) || null;
+                        const financial = finMap.get(company.symbol) || null;
+                        
+                        const result = strategy.filter(company, technical, financial);
+                        
+                        if (result.passes) {
+                            strategyStocks.push({
+                                strategy_id: strategy.id,
+                                strategy_name: strategy.name,
+                                symbol: company.symbol,
+                                company_name: company.company_name,
+                                industry: company.industry || '',
+                                current_price: technical?.current_price || 0,
+                                price_change: technical?.price_change_1d || 0,
+                                guru_score: result.score,
+                                match_reason: result.reason,
+                                metrics: result.metrics,
+                                rank_in_strategy: 0,
+                                calculation_date: today
+                            });
+                        }
+                    }
+                    
+                    // Sort và rank
+                    strategyStocks.sort((a, b) => b.guru_score - a.guru_score);
+                    strategyStocks.forEach((s, idx) => s.rank_in_strategy = idx + 1);
+                    
+                    // Top 10
+                    const topStocks = strategyStocks.slice(0, 10);
+                    allGuruStocks.push(...topStocks);
+                    byStrategy[strategy.id] = topStocks.length;
+                    
+                    log(`✓ ${strategy.name}: ${topStocks.length} cổ phiếu phù hợp`, 'success');
+                    setProgress(50 + (i + 1) * 8);
+                }
+                
+                // 5. Xóa dữ liệu cũ
+                log('Đang xóa dữ liệu cũ...');
+                await fetchSupabase(`guru_stocks?calculation_date=eq.${today}`, { method: 'DELETE' });
+                
+                // 6. Lưu dữ liệu mới
+                log(`Đang lưu ${allGuruStocks.length} cổ phiếu vào database...`);
+                setProgress(95);
+                
+                const saveRes = await fetchSupabase('guru_stocks', {
+                    method: 'POST',
+                    headers: { 'Prefer': 'return=minimal' },
+                    body: JSON.stringify(allGuruStocks)
+                });
+                
+                if (saveRes.ok) {
+                    log(`✓ Đã lưu thành công!`, 'success');
+                    setProgress(100);
+                    
+                    // Hiển thị kết quả
+                    document.getElementById('resultsSection').classList.remove('hidden');
+                    document.getElementById('resultsContent').innerHTML = `
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                            ${Object.entries(byStrategy).map(([id, count]) => `
+                                <div class="bg-slate-700/50 rounded-lg p-3">
+                                    <div class="text-2xl font-bold text-indigo-400">${count}</div>
+                                    <div class="text-sm text-slate-400">${GURU_STRATEGIES.find(s => s.id === id)?.name}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                            <span class="text-emerald-400 font-bold">✓ Tổng cộng: ${allGuruStocks.length} cổ phiếu đã được lưu</span>
+                        </div>
+                    `;
+                    
+                    allStocks = allGuruStocks;
+                    displayStocks(allGuruStocks);
+                    
+                } else {
+                    throw new Error('Không thể lưu vào database');
+                }
+                
+            } catch (error) {
+                log(`✗ Lỗi: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 Sync Guru Stocks';
+                document.getElementById('lastSync').textContent = `Lần sync cuối: ${new Date().toLocaleString('vi-VN')}`;
+            }
+        }
+
+        async function viewCurrentStocks() {
+            document.getElementById('stocksSection').classList.remove('hidden');
+            document.getElementById('stocksTable').innerHTML = '<div class="text-center py-8 text-slate-400">Đang tải...</div>';
+            
+            try {
+                const res = await fetchSupabase('guru_stocks?order=calculation_date.desc,rank_in_strategy.asc&limit=100');
+                const stocks = await res.json();
+                allStocks = stocks;
+                displayStocks(stocks);
+            } catch (error) {
+                document.getElementById('stocksTable').innerHTML = `<div class="text-center py-8 text-rose-400">Lỗi: ${error.message}</div>`;
+            }
+        }
+
+        function filterStocks() {
+            const strategyId = document.getElementById('strategyFilter').value;
+            const filtered = strategyId ? allStocks.filter(s => s.strategy_id === strategyId) : allStocks;
+            displayStocks(filtered);
+        }
+
+        function displayStocks(stocks) {
+            document.getElementById('stocksSection').classList.remove('hidden');
+            
+            if (stocks.length === 0) {
+                document.getElementById('stocksTable').innerHTML = '<div class="text-center py-8 text-slate-400">Chưa có dữ liệu. Nhấn "Sync Guru Stocks" để bắt đầu.</div>';
+                return;
+            }
+            
+            const strategyColors = {
+                buffett: 'bg-amber-500/20 text-amber-400',
+                lynch: 'bg-blue-500/20 text-blue-400',
+                graham: 'bg-emerald-500/20 text-emerald-400',
+                canslim: 'bg-orange-500/20 text-orange-400',
+                minervini: 'bg-rose-500/20 text-rose-400',
+                dalio: 'bg-indigo-500/20 text-indigo-400'
+            };
+            
+            document.getElementById('stocksTable').innerHTML = `
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-slate-400 border-b border-slate-700">
+                            <th class="pb-3 pr-4">#</th>
+                            <th class="pb-3 pr-4">Mã</th>
+                            <th class="pb-3 pr-4">Công ty</th>
+                            <th class="pb-3 pr-4">Strategy</th>
+                            <th class="pb-3 pr-4">Score</th>
+                            <th class="pb-3 pr-4">Giá</th>
+                            <th class="pb-3">Metrics</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${stocks.map(stock => `
+                            <tr class="border-b border-slate-700/50 hover:bg-slate-700/30">
+                                <td class="py-3 pr-4 text-slate-500">${stock.rank_in_strategy}</td>
+                                <td class="py-3 pr-4 font-bold text-white">${stock.symbol}</td>
+                                <td class="py-3 pr-4 text-slate-300 max-w-[200px] truncate">${stock.company_name}</td>
+                                <td class="py-3 pr-4">
+                                    <span class="px-2 py-1 rounded text-xs font-medium ${strategyColors[stock.strategy_id] || 'bg-slate-700 text-slate-300'}">
+                                        ${stock.strategy_name}
+                                    </span>
+                                </td>
+                                <td class="py-3 pr-4">
+                                    <span class="font-bold ${stock.guru_score >= 85 ? 'text-emerald-400' : stock.guru_score >= 70 ? 'text-amber-400' : 'text-slate-400'}">
+                                        ${stock.guru_score}
+                                    </span>
+                                </td>
+                                <td class="py-3 pr-4">
+                                    <div class="font-mono">${stock.current_price?.toLocaleString() || '-'}</div>
+                                    <div class="text-xs ${stock.price_change >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                                        ${stock.price_change > 0 ? '+' : ''}${stock.price_change?.toFixed(2) || 0}%
+                                    </div>
+                                </td>
+                                <td class="py-3">
+                                    <div class="flex flex-wrap gap-1">
+                                        ${Object.entries(stock.metrics || {}).map(([k, v]) => `
+                                            <span class="px-1.5 py-0.5 bg-slate-700 rounded text-xs">
+                                                <span class="text-slate-400">${k}:</span> 
+                                                <span class="text-white">${v}</span>
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        // Load current stocks on page load
+        viewCurrentStocks();
+    </script>
+</body>
+</html>

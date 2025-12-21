@@ -23,8 +23,8 @@ graph TB
     end
     
     subgraph Data
-        LocalStorage[Local Storage]
         Supabase[Supabase DB]
+        UserPortfolios[User Portfolios Table]
         TechIndicators[Technical Indicators]
         AIAnalysis[AI Analysis Data]
     end
@@ -34,7 +34,8 @@ graph TB
     UI --> Dashboard
     
     Forms --> PortfolioService
-    PortfolioService --> LocalStorage
+    PortfolioService --> Supabase
+    PortfolioService --> UserPortfolios
     PortfolioService --> OptimizationEngine
     
     OptimizationEngine --> RiskAnalyzer
@@ -228,16 +229,59 @@ const RISK_QUESTIONS: RiskQuestion[] = [
 
 ## Data Models
 
-### Portfolio Storage (Local Storage)
+### User Portfolios Table (Supabase)
+
+```sql
+CREATE TABLE user_portfolios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id),
+  name VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE portfolio_stocks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portfolio_id UUID REFERENCES user_portfolios(id) ON DELETE CASCADE,
+  symbol VARCHAR(10) NOT NULL,
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  avg_price DECIMAL(12,2) NOT NULL CHECK (avg_price > 0),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(portfolio_id, symbol)
+);
+
+CREATE TABLE user_risk_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) UNIQUE,
+  profile_type VARCHAR(20) CHECK (profile_type IN ('conservative', 'balanced', 'growth', 'aggressive')),
+  score INTEGER CHECK (score >= 0 AND score <= 100),
+  answers JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### TypeScript Interfaces
 
 ```typescript
 interface StoredPortfolio {
-  portfolios: Portfolio[];
-  riskProfile: RiskProfile | null;
-  settings: {
-    rebalanceThreshold: number;  // Default 5%
-    autoSave: boolean;
-  };
+  id: string;
+  user_id: string;
+  name: string;
+  stocks: PortfolioStock[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface UserRiskProfile {
+  id: string;
+  user_id: string;
+  profile_type: 'conservative' | 'balanced' | 'growth' | 'aggressive';
+  score: number;
+  answers: Record<string, number>;
+  created_at: string;
+  updated_at: string;
 }
 ```
 
@@ -257,7 +301,7 @@ interface StoredPortfolio {
 **Validates: Requirements 1.3**
 
 ### Property 2: Portfolio save/load round-trip
-*For any* valid portfolio, saving to local storage then loading should return an equivalent portfolio with all data preserved.
+*For any* valid portfolio, saving to Supabase then loading should return an equivalent portfolio with all data preserved.
 **Validates: Requirements 1.4**
 
 ### Property 3: Risk profile classification determinism
@@ -337,5 +381,5 @@ interface StoredPortfolio {
 
 ### Integration Testing
 - Test data flow from input to analysis
-- Test local storage persistence
-- Test integration with Supabase data
+- Test Supabase persistence (save/load portfolios)
+- Test integration with existing Supabase data (companies, technical_indicators, ai_analysis)
