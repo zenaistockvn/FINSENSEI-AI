@@ -77,12 +77,29 @@ const MarketPulse: React.FC = () => {
     const fetchIndices = async () => {
       try {
         const data = await getLatestIndices();
-        const formatted: MarketIndex[] = data.map((idx: SupabaseIndex) => ({
-          name: idx.index_code,
-          value: idx.close_value,
-          change: idx.change_value || 0,
-          changePercent: idx.change_percent || 0,
-        }));
+        const formatted: MarketIndex[] = data.map((idx: SupabaseIndex) => {
+          const closeValue = idx.close_value;
+          const changeValue = idx.change_value || 0;
+          
+          // Tính % thay đổi: change / (close - change) * 100
+          // Vì previousClose = closeValue - changeValue
+          const previousClose = closeValue - changeValue;
+          const calculatedPercent = previousClose > 0 
+            ? (changeValue / previousClose) * 100 
+            : 0;
+          
+          // Ưu tiên dùng change_percent từ DB nếu có, nếu không thì tính
+          const changePercent = idx.change_percent !== null && idx.change_percent !== undefined
+            ? idx.change_percent
+            : calculatedPercent;
+          
+          return {
+            name: idx.index_code,
+            value: closeValue,
+            change: changeValue,
+            changePercent: changePercent,
+          };
+        });
         setIndices(formatted.length > 0 ? formatted : getDefaultIndices());
       } catch (error) {
         console.error('Error fetching indices:', error);

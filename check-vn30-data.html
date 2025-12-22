@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check VN30 Data</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: #fff; }
+        pre { background: #16213e; padding: 15px; border-radius: 8px; overflow: auto; }
+        .highlight { color: #00ff88; font-weight: bold; }
+        .error { color: #ff6b6b; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Kiểm tra dữ liệu VN30 từ Database</h1>
+    <div id="result">Loading...</div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        async function checkData() {
+            const resultDiv = document.getElementById('result');
+            let html = '';
+
+            try {
+                // 1. Get latest market indices
+                const indicesRes = await fetch(
+                    `${SUPABASE_URL}/rest/v1/market_indices?order=trading_date.desc&limit=10`,
+                    { headers: { "apikey": SUPABASE_KEY } }
+                );
+                const indices = await indicesRes.json();
+
+                html += '<h2>📊 Dữ liệu Market Indices (10 records mới nhất)</h2>';
+                html += '<pre>' + JSON.stringify(indices, null, 2) + '</pre>';
+
+                // 2. Filter VN30 data
+                const vn30Data = indices.filter(i => i.index_code === 'VN30');
+                html += '<h2>📈 Dữ liệu VN30</h2>';
+                
+                if (vn30Data.length > 0) {
+                    const latest = vn30Data[0];
+                    html += '<pre>' + JSON.stringify(latest, null, 2) + '</pre>';
+                    
+                    // Calculate % change
+                    const closeValue = latest.close_value;
+                    const changeValue = latest.change_value || 0;
+                    const changePercent = latest.change_percent || 0;
+                    
+                    // Tính lại % từ change_value
+                    const previousClose = closeValue - changeValue;
+                    const calculatedPercent = previousClose > 0 ? (changeValue / previousClose) * 100 : 0;
+                    
+                    html += '<h3>🧮 Phân tích:</h3>';
+                    html += `<p>Close Value: <span class="highlight">${closeValue}</span></p>`;
+                    html += `<p>Change Value (từ DB): <span class="highlight">${changeValue}</span></p>`;
+                    html += `<p>Change Percent (từ DB): <span class="highlight">${changePercent}%</span></p>`;
+                    html += `<p>Previous Close (tính): <span class="highlight">${previousClose.toFixed(2)}</span></p>`;
+                    html += `<p>% Tính lại: <span class="highlight">${calculatedPercent.toFixed(4)}%</span></p>`;
+                    
+                    if (Math.abs(changePercent - calculatedPercent) > 0.01) {
+                        html += `<p class="error">⚠️ Có sự khác biệt giữa change_percent trong DB và giá trị tính toán!</p>`;
+                    } else {
+                        html += `<p style="color:#00ff88">✅ Dữ liệu chính xác!</p>`;
+                    }
+                } else {
+                    html += '<p class="error">Không tìm thấy dữ liệu VN30</p>';
+                }
+
+                // 3. Get VNINDEX for comparison
+                const vnindexData = indices.filter(i => i.index_code === 'VNINDEX');
+                html += '<h2>📈 Dữ liệu VNINDEX</h2>';
+                if (vnindexData.length > 0) {
+                    html += '<pre>' + JSON.stringify(vnindexData[0], null, 2) + '</pre>';
+                }
+
+            } catch (error) {
+                html += `<p class="error">Error: ${error.message}</p>`;
+            }
+
+            resultDiv.innerHTML = html;
+        }
+
+        checkData();
+    </script>
+</body>
+</html>

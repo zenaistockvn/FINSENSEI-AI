@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 SenAI Analysis - Phân tích VN30</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%); }
+        .card { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(10px); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .animate-pulse { animation: pulse 2s infinite; }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2">🤖 SenAI Analysis System</h1>
+            <p class="text-slate-400">Phân tích tự động Chẩn đoán, Xác suất & Rủi ro, Chiến lược giao dịch cho VN30</p>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="card rounded-2xl p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-bold mb-1">🎯 Phân tích VN30</h2>
+                    <p class="text-slate-400 text-sm">30 mã cổ phiếu blue-chip hàng đầu Việt Nam</p>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="runAnalysis()" id="btnAnalyze" 
+                        class="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl font-bold hover:opacity-90 transition flex items-center gap-2">
+                        <span>🚀</span> Chạy Phân tích
+                    </button>
+                    <button onclick="exportResults()" id="btnExport" disabled
+                        class="px-6 py-3 bg-emerald-600 rounded-xl font-bold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        📥 Xuất Excel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div id="progressSection" class="card rounded-2xl p-6 mb-6 hidden">
+            <div class="flex items-center gap-4 mb-4">
+                <div class="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
+                    <span class="text-2xl animate-pulse">🔄</span>
+                </div>
+                <div>
+                    <h3 class="font-bold" id="progressTitle">Đang phân tích...</h3>
+                    <p class="text-slate-400 text-sm" id="progressDetail">Khởi tạo...</p>
+                </div>
+            </div>
+            <div class="w-full bg-slate-700 rounded-full h-3">
+                <div id="progressBar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p class="text-right text-sm text-slate-400 mt-2"><span id="progressPercent">0</span>%</p>
+        </div>
+
+        <!-- Results Summary -->
+        <div id="summarySection" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 hidden">
+            <div class="card rounded-xl p-4 text-center">
+                <p class="text-3xl font-bold text-emerald-400" id="countBuy">0</p>
+                <p class="text-slate-400 text-sm">MUA</p>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <p class="text-3xl font-bold text-amber-400" id="countWatch">0</p>
+                <p class="text-slate-400 text-sm">THEO DÕI</p>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <p class="text-3xl font-bold text-blue-400" id="countHold">0</p>
+                <p class="text-slate-400 text-sm">NẮM GIỮ</p>
+            </div>
+            <div class="card rounded-xl p-4 text-center">
+                <p class="text-3xl font-bold text-rose-400" id="countSell">0</p>
+                <p class="text-slate-400 text-sm">BÁN</p>
+            </div>
+        </div>
+
+        <!-- Results Table -->
+        <div id="resultsSection" class="card rounded-2xl overflow-hidden hidden">
+            <div class="p-4 border-b border-slate-700">
+                <h2 class="text-xl font-bold">📊 Kết quả phân tích</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-800/50">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Mã</th>
+                            <th class="px-4 py-3 text-center">Điểm</th>
+                            <th class="px-4 py-3 text-center">Tín hiệu</th>
+                            <th class="px-4 py-3 text-center">Xác suất ↑</th>
+                            <th class="px-4 py-3 text-center">Rủi ro ↓</th>
+                            <th class="px-4 py-3 text-right">Vùng mua</th>
+                            <th class="px-4 py-3 text-right">Cắt lỗ</th>
+                            <th class="px-4 py-3 text-right">Target 1</th>
+                            <th class="px-4 py-3 text-right">Target 2</th>
+                            <th class="px-4 py-3 text-center">Chiến lược</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Log -->
+        <div class="card rounded-2xl p-4 mt-6">
+            <h3 class="font-bold mb-2">📝 Log</h3>
+            <div id="logArea" class="bg-slate-900 rounded-lg p-4 h-48 overflow-y-auto font-mono text-xs text-slate-400"></div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase config
+        const SUPABASE_URL = 'https://trbiojajipzpqlnlghtt.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ';
+
+        const VN30_SYMBOLS = [
+            'ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG',
+            'MBB', 'MSN', 'MWG', 'PLX', 'POW', 'SAB', 'SHB', 'SSB', 'SSI', 'STB',
+            'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE'
+        ];
+
+        let allResults = [];
+
+        function log(msg) {
+            const logArea = document.getElementById('logArea');
+            const time = new Date().toLocaleTimeString('vi-VN');
+            logArea.innerHTML += `[${time}] ${msg}\n`;
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        // Fetch functions
+        async function getStockPrices(symbol, days = 252) {
+            const res = await fetch(
+                `${SUPABASE_URL}/rest/v1/stock_prices?symbol=eq.${symbol}&order=trading_date.desc&limit=${days}`,
+                { headers: { 'apikey': SUPABASE_KEY } }
+            );
+            return res.json();
+        }
+
+        async function getSimplizeData(symbol) {
+            const res = await fetch(
+                `${SUPABASE_URL}/rest/v1/simplize_company_data?symbol=eq.${symbol}`,
+                { headers: { 'apikey': SUPABASE_KEY } }
+            );
+            const data = await res.json();
+            return data[0] || null;
+        }
+
+        // Technical calculations
+        function calculateMA(prices, period) {
+            if (prices.length < period) return 0;
+            return prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
+        }
+
+        function calculateRSI(prices, period = 14) {
+            if (prices.length < period + 1) return 50;
+            let gains = 0, losses = 0;
+            for (let i = 0; i < period; i++) {
+                const change = prices[i] - prices[i + 1];
+                if (change > 0) gains += change;
+                else losses -= change;
+            }
+            const rs = (gains / period) / (losses / period || 0.001);
+            return 100 - (100 / (1 + rs));
+        }
+
+        function calculateVolatility(prices, period = 20) {
+            if (prices.length < period) return 0;
+            const returns = [];
+            for (let i = 0; i < period - 1; i++) {
+                returns.push((prices[i] - prices[i + 1]) / prices[i + 1]);
+            }
+            const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
+            return Math.sqrt(variance) * Math.sqrt(252) * 100;
+        }
+
+        function calculateMaxDrawdown(prices) {
+            let maxPrice = prices[prices.length - 1];
+            let maxDrawdown = 0;
+            for (let i = prices.length - 1; i >= 0; i--) {
+                if (prices[i] > maxPrice) maxPrice = prices[i];
+                const drawdown = (maxPrice - prices[i]) / maxPrice * 100;
+                if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+            }
+            return maxDrawdown;
+        }
+
+        function calculateSupportResistance(prices, highs, lows) {
+            const currentPrice = prices[0];
+            const recentLows = lows.slice(0, 20).sort((a, b) => a - b);
+            const recentHighs = highs.slice(0, 20).sort((a, b) => b - a);
+            
+            const supports = recentLows.filter(l => l < currentPrice);
+            const support1 = supports[0] || currentPrice * 0.95;
+            const support2 = supports[Math.floor(supports.length / 2)] || currentPrice * 0.90;
+            
+            const resistances = recentHighs.filter(h => h > currentPrice);
+            const resistance1 = resistances[0] || currentPrice * 1.05;
+            const resistance2 = resistances[Math.floor(resistances.length / 2)] || currentPrice * 1.10;
+            
+            return { support1, support2, resistance1, resistance2 };
+        }
+
+        // SenAI Diagnosis
+        function calculateSenAIDiagnosis(data) {
+            let technicalScore = 0;
+            let fundamentalScore = 0;
+            let momentumScore = 0;
+
+            // RSI Score
+            if (data.rsi14 < 30) technicalScore += 10;
+            else if (data.rsi14 < 40) technicalScore += 5;
+            else if (data.rsi14 <= 60) technicalScore += 3;
+            else if (data.rsi14 > 70) technicalScore -= 5;
+
+            // MA Score
+            if (data.currentPrice > data.ma20) technicalScore += 5;
+            else technicalScore -= 3;
+            if (data.currentPrice > data.ma50) technicalScore += 5;
+            else technicalScore -= 3;
+            if (data.currentPrice > data.ma200) technicalScore += 5;
+            else technicalScore -= 3;
+
+            // MA Cross
+            if (data.ma20 > data.ma50) technicalScore += 5;
+            else if (data.ma20 < data.ma50 * 0.98) technicalScore -= 5;
+
+            // Price Position
+            if (data.pricePosition < 30) technicalScore += 10;
+            else if (data.pricePosition < 50) technicalScore += 5;
+            else if (data.pricePosition < 70) technicalScore += 3;
+
+            // P/E Score
+            if (data.pe > 0) {
+                if (data.pe < 8) fundamentalScore += 12;
+                else if (data.pe < 12) fundamentalScore += 8;
+                else if (data.pe < 15) fundamentalScore += 5;
+                else if (data.pe < 20) fundamentalScore += 2;
+                else if (data.pe > 30) fundamentalScore -= 5;
+            }
+
+            // P/B Score
+            if (data.pb > 0) {
+                if (data.pb < 1.0) fundamentalScore += 8;
+                else if (data.pb < 1.5) fundamentalScore += 5;
+                else if (data.pb < 2.5) fundamentalScore += 2;
+                else if (data.pb > 3) fundamentalScore -= 3;
+            }
+
+            // ROE Score
+            if (data.roe > 25) fundamentalScore += 10;
+            else if (data.roe > 20) fundamentalScore += 8;
+            else if (data.roe > 15) fundamentalScore += 5;
+            else if (data.roe > 10) fundamentalScore += 2;
+            else fundamentalScore -= 3;
+
+            // Momentum
+            if (data.priceChangePercent > 3) momentumScore += 5;
+            else if (data.priceChangePercent > 1) momentumScore += 3;
+            else if (data.priceChangePercent > -1) momentumScore += 1;
+            else if (data.priceChangePercent < -3) momentumScore -= 5;
+
+            let score = 50 + technicalScore + fundamentalScore + momentumScore;
+            score = Math.max(0, Math.min(100, score));
+
+            let signal, recommendation;
+            if (score >= 80) {
+                signal = 'MUA';
+                recommendation = '⭐ MUA MẠNH - Điểm số xuất sắc';
+            } else if (score >= 65) {
+                signal = 'MUA';
+                recommendation = '✅ MUA - Tiềm năng tốt';
+            } else if (score >= 50) {
+                signal = 'THEO DÕI';
+                recommendation = '👀 THEO DÕI - Chờ tín hiệu';
+            } else if (score >= 35) {
+                signal = 'NẮM GIỮ';
+                recommendation = '⚠️ NẮM GIỮ - Có rủi ro';
+            } else {
+                signal = 'BÁN';
+                recommendation = '🔴 BÁN - Tiêu cực';
+            }
+
+            return { score, signal, recommendation, rating: Math.ceil(score / 20) };
+        }
+
+        // Risk Analysis
+        function calculateRiskAnalysis(data, volatility, maxDrawdown) {
+            let upsideProbability = 50;
+            
+            if (data.currentPrice > data.ma20) upsideProbability += 8;
+            if (data.currentPrice > data.ma50) upsideProbability += 7;
+            if (data.currentPrice > data.ma200) upsideProbability += 5;
+            if (data.rsi14 < 30) upsideProbability += 12;
+            else if (data.rsi14 < 40) upsideProbability += 10;
+            else if (data.rsi14 > 70) upsideProbability -= 10;
+            if (data.pricePosition < 30) upsideProbability += 10;
+            if (data.pe > 0 && data.pe < 15) upsideProbability += 5;
+            if (data.roe > 15) upsideProbability += 5;
+
+            upsideProbability = Math.max(15, Math.min(85, upsideProbability));
+            const downsideRisk = Math.min(30, maxDrawdown * 0.6 + volatility * 0.3);
+
+            return {
+                upsideProbability: Math.round(upsideProbability),
+                downsideRisk: Math.round(downsideRisk * 10) / 10,
+                volatility: Math.round(volatility * 10) / 10
+            };
+        }
+
+        // Trading Strategy
+        function calculateTradingStrategy(data, support1, support2, resistance1, resistance2) {
+            const currentPrice = data.currentPrice;
+            const buyZoneLow = support1 * 0.99;
+            const buyZoneHigh = support1 * 1.02;
+            const stopLoss = support2 * 0.97;
+            const risk = currentPrice - stopLoss;
+            const target1 = Math.min(currentPrice + risk * 1.5, resistance1);
+            const target2 = Math.min(currentPrice + risk * 2.5, resistance2);
+
+            let strategyType;
+            if (data.rsi14 < 30 && currentPrice < data.ma20) strategyType = 'Bắt đáy';
+            else if (data.rsi14 > 70 && currentPrice > data.ma20) strategyType = 'Chốt lời';
+            else if (currentPrice > data.ma20 && data.ma20 > data.ma50) strategyType = 'Theo xu hướng';
+            else if (currentPrice < data.ma20 && data.ma20 < data.ma50) strategyType = 'Đứng ngoài';
+            else if (Math.abs(data.ma20 - data.ma50) / data.ma50 < 0.02) strategyType = 'Tích lũy';
+            else strategyType = 'Quan sát';
+
+            const round = p => Math.round(p / 100) * 100;
+            return {
+                buyZone: `${round(buyZoneLow).toLocaleString()} - ${round(buyZoneHigh).toLocaleString()}`,
+                stopLoss: round(stopLoss),
+                target1: round(target1),
+                target2: round(target2),
+                strategyType
+            };
+        }
+
+        // Analyze single stock
+        async function analyzeStock(symbol) {
+            try {
+                const [priceData, simplizeData] = await Promise.all([
+                    getStockPrices(symbol, 252),
+                    getSimplizeData(symbol)
+                ]);
+
+                if (!priceData || priceData.length < 50) {
+                    log(`⚠️ ${symbol}: Không đủ dữ liệu`);
+                    return null;
+                }
+
+                const prices = priceData.map(p => p.close_price);
+                const highs = priceData.map(p => p.high_price);
+                const lows = priceData.map(p => p.low_price);
+
+                const currentPrice = prices[0];
+                const prevPrice = prices[1] || currentPrice;
+                const ma20 = calculateMA(prices, 20);
+                const ma50 = calculateMA(prices, 50);
+                const ma200 = calculateMA(prices, 200);
+                const rsi14 = calculateRSI(prices, 14);
+                const volatility = calculateVolatility(prices, 20);
+                const maxDrawdown = calculateMaxDrawdown(prices);
+                const high52w = Math.max(...prices);
+                const low52w = Math.min(...prices);
+                const pricePosition = ((currentPrice - low52w) / (high52w - low52w)) * 100;
+                const { support1, support2, resistance1, resistance2 } = calculateSupportResistance(prices, highs, lows);
+
+                const data = {
+                    symbol,
+                    currentPrice,
+                    priceChangePercent: ((currentPrice - prevPrice) / prevPrice) * 100,
+                    ma20, ma50, ma200, rsi14, pricePosition,
+                    pe: simplizeData?.pe_ratio || 0,
+                    pb: simplizeData?.pb_ratio || 0,
+                    roe: simplizeData?.roe || 0
+                };
+
+                const diagnosis = calculateSenAIDiagnosis(data);
+                const risk = calculateRiskAnalysis(data, volatility, maxDrawdown);
+                const strategy = calculateTradingStrategy(data, support1, support2, resistance1, resistance2);
+
+                return { symbol, currentPrice, diagnosis, risk, strategy };
+            } catch (err) {
+                log(`❌ ${symbol}: ${err.message}`);
+                return null;
+            }
+        }
+
+        // Run analysis for all VN30
+        async function runAnalysis() {
+            const btn = document.getElementById('btnAnalyze');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">⏳</span> Đang chạy...';
+
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('summarySection').classList.add('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+            allResults = [];
+
+            log('🚀 Bắt đầu phân tích VN30...');
+
+            for (let i = 0; i < VN30_SYMBOLS.length; i++) {
+                const symbol = VN30_SYMBOLS[i];
+                document.getElementById('progressTitle').textContent = `Đang phân tích ${symbol}...`;
+                document.getElementById('progressDetail').textContent = `${i + 1}/${VN30_SYMBOLS.length} mã`;
+                const percent = Math.round(((i + 1) / VN30_SYMBOLS.length) * 100);
+                document.getElementById('progressBar').style.width = `${percent}%`;
+                document.getElementById('progressPercent').textContent = percent;
+
+                const result = await analyzeStock(symbol);
+                if (result) {
+                    allResults.push(result);
+                    log(`✅ ${symbol}: Score ${result.diagnosis.score} - ${result.diagnosis.signal}`);
+                }
+
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            // Sort by score
+            allResults.sort((a, b) => b.diagnosis.score - a.diagnosis.score);
+
+            // Update summary
+            const countBuy = allResults.filter(r => r.diagnosis.signal === 'MUA').length;
+            const countWatch = allResults.filter(r => r.diagnosis.signal === 'THEO DÕI').length;
+            const countHold = allResults.filter(r => r.diagnosis.signal === 'NẮM GIỮ').length;
+            const countSell = allResults.filter(r => r.diagnosis.signal === 'BÁN').length;
+
+            document.getElementById('countBuy').textContent = countBuy;
+            document.getElementById('countWatch').textContent = countWatch;
+            document.getElementById('countHold').textContent = countHold;
+            document.getElementById('countSell').textContent = countSell;
+
+            // Render table
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = allResults.map(r => {
+                const signalColor = {
+                    'MUA': 'text-emerald-400',
+                    'THEO DÕI': 'text-amber-400',
+                    'NẮM GIỮ': 'text-blue-400',
+                    'BÁN': 'text-rose-400'
+                }[r.diagnosis.signal] || 'text-slate-400';
+
+                return `
+                    <tr class="border-b border-slate-700/50 hover:bg-slate-800/30">
+                        <td class="px-4 py-3 font-bold">${r.symbol}</td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="px-2 py-1 rounded-lg ${r.diagnosis.score >= 65 ? 'bg-emerald-500/20 text-emerald-400' : r.diagnosis.score >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-rose-500/20 text-rose-400'}">
+                                ${r.diagnosis.score}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-center font-bold ${signalColor}">${r.diagnosis.signal}</td>
+                        <td class="px-4 py-3 text-center text-emerald-400">${r.risk.upsideProbability}%</td>
+                        <td class="px-4 py-3 text-center text-rose-400">${r.risk.downsideRisk}%</td>
+                        <td class="px-4 py-3 text-right text-xs">${r.strategy.buyZone}</td>
+                        <td class="px-4 py-3 text-right text-rose-400">${r.strategy.stopLoss.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-emerald-400">${r.strategy.target1.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-emerald-400">${r.strategy.target2.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="px-2 py-1 rounded-lg bg-slate-700 text-xs">${r.strategy.strategyType}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            document.getElementById('progressSection').classList.add('hidden');
+            document.getElementById('summarySection').classList.remove('hidden');
+            document.getElementById('resultsSection').classList.remove('hidden');
+
+            btn.disabled = false;
+            btn.innerHTML = '<span>🚀</span> Chạy Phân tích';
+            document.getElementById('btnExport').disabled = false;
+
+            log(`✅ Hoàn thành! Đã phân tích ${allResults.length} mã`);
+        }
+
+        // Export to CSV
+        function exportResults() {
+            if (allResults.length === 0) return;
+
+            const headers = ['Mã', 'Giá', 'Điểm SenAI', 'Tín hiệu', 'Xác suất tăng', 'Rủi ro giảm', 'Vùng mua', 'Cắt lỗ', 'Target 1', 'Target 2', 'Chiến lược'];
+            const rows = allResults.map(r => [
+                r.symbol,
+                r.currentPrice,
+                r.diagnosis.score,
+                r.diagnosis.signal,
+                r.risk.upsideProbability + '%',
+                r.risk.downsideRisk + '%',
+                r.strategy.buyZone,
+                r.strategy.stopLoss,
+                r.strategy.target1,
+                r.strategy.target2,
+                r.strategy.strategyType
+            ]);
+
+            const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `SenAI_VN30_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            log('📥 Đã xuất file CSV');
+        }
+
+        log('🤖 SenAI Analysis System sẵn sàng');
+        log('📊 Công thức: Technical (40%) + Fundamental (40%) + Momentum (20%)');
+    </script>
+</body>
+</html>

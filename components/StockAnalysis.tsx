@@ -50,6 +50,7 @@ import {
   getTradingStrategy,
   getBrokerRecommendations,
   getSimplizeCompanyData,
+  getTechnicalIndicators,
   Company,
   StockPrice,
   StockNews,
@@ -61,6 +62,15 @@ import {
 } from '../services/supabaseClient';
 import AIStockInsight from './AIStockInsight';
 import TradingViewChart from './TradingViewChart';
+import LightweightChart from './LightweightChart';
+import { analyzeStockWithGPT, AISignal } from '../services/gptSignalService';
+import { getSimplizePrice } from '../services/simplizePriceService';
+import {
+  calculateSenAIDiagnosis,
+  calculateSenAIRisk,
+  calculateSenAIStrategy,
+  SenAIInput,
+} from '../services/senaiCalculator';
 
 // --- Types ---
 interface CandlestickData {
@@ -1098,6 +1108,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [viewMode, setViewMode] = useState<'chart' | 'earnings' | 'news'>('chart');
   const [showAlerts, setShowAlerts] = useState(true);
   const [showFinancialModal, setShowFinancialModal] = useState(false);
+  const [chartMode, setChartMode] = useState<'advanced' | 'lite'>('advanced'); // Toggle chart mode
   const [newsFilter, setNewsFilter] = useState<
     'all' | 'positive' | 'neutral' | 'negative'
   >('all');
@@ -1133,18 +1144,181 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   useEffect(() => {
     const fetchAnalysisData = async () => {
       try {
-        const [ai, risk, strategy, brokers, simplize] = await Promise.all([
+        // Fetch data from database first
+        const [dbAi, dbRisk, dbStrategy, brokers, simplize, technicals, priceData] = await Promise.all([
           getAIAnalysis(selectedSymbol),
           getRiskAnalysis(selectedSymbol),
           getTradingStrategy(selectedSymbol),
           getBrokerRecommendations(selectedSymbol),
           getSimplizeCompanyData(selectedSymbol),
+          getTechnicalIndicators(selectedSymbol),
+          getStockPrices(selectedSymbol, 252), // 1 year data for calculations
         ]);
-        setAIAnalysis(ai);
-        setRiskAnalysis(risk);
-        setTradingStrategy(strategy);
+
         setBrokerRecommendations(brokers);
         setSimplizeData(simplize);
+
+        // If no database data, calculate realtime using SenAI formulas
+        if (!dbAi || !dbRisk || !dbStrategy) {
+          // Prepare input data for SenAI calculations
+          const prices = priceData.map(p => p.close_price);
+          const highs = priceData.map(p => p.high_price);
+          const lows = priceData.map(p => p.low_price);
+          const volumes = priceData.map(p => p.volume);
+
+          if (prices.length >= 50) {
+            const currentPrice = prices[0];
+            const prevPrice = prices[1] || currentPrice;
+            
+            // Calculate MAs
+            const ma20 = prices.slice(0, 20).reduce((a, b) => a + b, 0) / 20;
+            const ma50 = prices.slice(0, 50).reduce((a, b) => a + b, 0) / 50;
+            const ma200 = prices.length >= 200 
+              ? prices.slice(0, 200).reduce((a, b) => a + b, 0) / 200 
+              : ma50;
+
+            // Calculate RSI
+            let gains = 0, losses = 0;
+            for (let i = 0; i < 14 && i < prices.length - 1; i++) {
+              const change = prices[i] - prices[i + 1];
+              if (change > 0) gains += change;
+              else losses -= change;
+            }
+            const rs = (gains / 14) / ((losses / 14) || 0.001);
+            const rsi14 = 100 - (100 / (1 + rs));
+
+            // Calculate price position in 52w range
+            const high52w = Math.max(...prices);
+            const low52w = Math.min(...prices);
+            const pricePosition = ((currentPrice - low52w) / (high52w - low52w)) * 100;
+
+            // Calculate volatility
+            const returns: number[] = [];
+            for (let i = 0; i < 19 && i < prices.length - 1; i++) {
+              returns.push((prices[i] - prices[i + 1]) / prices[i + 1]);
+            }
+            const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+            const variance = returns.reduce((sum, r) => sum + Math.pow(r - meanReturn, 2), 0) / returns.length;
+            const volatility = Math.sqrt(variance) * Math.sqrt(252) * 100;
+
+            // Calculate max drawdown
+            let maxPrice = prices[prices.length - 1];
+            let maxDrawdown = 0;
+            for (let i = prices.length - 1; i >= 0; i--) {
+              if (prices[i] > maxPrice) maxPrice = prices[i];
+              const drawdown = (maxPrice - prices[i]) / maxPrice * 100;
+              if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+            }
+
+            // Calculate support/resistance
+            const recentLows = lows.slice(0, 20).sort((a, b) => a - b);
+            const recentHighs = highs.slice(0, 20).sort((a, b) => b - a);
+            const supports = recentLows.filter(l => l < currentPrice);
+            const resistances = recentHighs.filter(h => h > currentPrice);
+            const support1 = supports[0] || currentPrice * 0.95;
+            const support2 = supports[Math.floor(supports.length / 2)] || currentPrice * 0.90;
+            const resistance1 = resistances[0] || currentPrice * 1.05;
+            const resistance2 = resistances[Math.floor(resistances.length / 2)] || currentPrice * 1.10;
+
+            // Average volume
+            const avgVolume = volumes.slice(0, 20).reduce((a, b) => a + b, 0) / 20;
+
+            // Build SenAI input
+            const senaiInput: SenAIInput = {
+              symbol: selectedSymbol,
+              currentPrice,
+              priceChangePercent: ((currentPrice - prevPrice) / prevPrice) * 100,
+              ma20,
+              ma50,
+              ma200,
+              rsi14,
+              pricePosition,
+              pe: simplize?.pe_ratio || technicals?.current_price ? (currentPrice / (simplize?.eps || 1)) : 0,
+              pb: simplize?.pb_ratio || 0,
+              roe: simplize?.roe || 0,
+              volume: volumes[0] || 0,
+              avgVolume,
+              macd: technicals?.macd,
+              macdSignal: technicals?.macd_signal,
+            };
+
+            // Calculate SenAI metrics
+            const diagnosis = calculateSenAIDiagnosis(senaiInput);
+            const risk = calculateSenAIRisk(senaiInput, volatility, maxDrawdown);
+            const strategy = calculateSenAIStrategy(senaiInput, support1, support2, resistance1, resistance2);
+
+            // Set calculated values if no database data
+            if (!dbAi) {
+              setAIAnalysis({
+                id: 0,
+                symbol: selectedSymbol,
+                analysis_date: new Date().toISOString().split('T')[0],
+                rating: diagnosis.rating,
+                score: diagnosis.score,
+                signal: diagnosis.signal,
+                recommendation: diagnosis.recommendation,
+                confidence: diagnosis.confidence,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            } else {
+              setAIAnalysis(dbAi);
+            }
+
+            if (!dbRisk) {
+              setRiskAnalysis({
+                id: 0,
+                symbol: selectedSymbol,
+                analysis_date: new Date().toISOString().split('T')[0],
+                optimal_holding_days: risk.optimalHoldingDays,
+                upside_probability: risk.upsideProbability,
+                downside_risk: risk.downsideRisk,
+                volatility: risk.volatility,
+                beta: risk.beta,
+                sharpe_ratio: 0,
+                max_drawdown: maxDrawdown,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            } else {
+              setRiskAnalysis(dbRisk);
+            }
+
+            if (!dbStrategy) {
+              setTradingStrategy({
+                id: 0,
+                symbol: selectedSymbol,
+                analysis_date: new Date().toISOString().split('T')[0],
+                buy_zone_low: strategy.buyZoneLow,
+                buy_zone_high: strategy.buyZoneHigh,
+                stop_loss: strategy.stopLoss,
+                target_1: strategy.target1,
+                target_2: strategy.target2,
+                target_3: strategy.target3,
+                support_1: support1,
+                support_2: support2,
+                resistance_1: resistance1,
+                resistance_2: resistance2,
+                strategy_type: strategy.strategyType,
+                strategy_note: strategy.strategyNote,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            } else {
+              setTradingStrategy(dbStrategy);
+            }
+          } else {
+            // Not enough data, use database values or null
+            setAIAnalysis(dbAi);
+            setRiskAnalysis(dbRisk);
+            setTradingStrategy(dbStrategy);
+          }
+        } else {
+          // Use database values
+          setAIAnalysis(dbAi);
+          setRiskAnalysis(dbRisk);
+          setTradingStrategy(dbStrategy);
+        }
       } catch (error) {
         console.error('Error fetching analysis data:', error);
       }
@@ -1219,29 +1393,30 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
         // Get company info
         const company = await getCompanyBySymbol(selectedSymbol);
         
+        // Get realtime price from Simplize API
+        const simplizePrice = await getSimplizePrice(selectedSymbol);
+        
         // Get price history
         const days = timeframe === '1W' ? 7 : timeframe === '1M' ? 30 : timeframe === '3M' ? 90 : timeframe === '6M' ? 180 : timeframe === '1Y' ? 365 : timeframe === '2Y' ? 730 : 60;
         const prices = await getStockPrices(selectedSymbol, days);
         
         if (prices.length > 0) {
-          const latestPrice = prices[0];
-          const prevPrice = prices[1] || prices[0];
-          const change = latestPrice.close_price - prevPrice.close_price;
-          const changePercent = prevPrice.close_price > 0 
-            ? (change / prevPrice.close_price) * 100 
-            : 0;
+          // Use Simplize price if available, otherwise use database price
+          const currentPrice = simplizePrice?.price || prices[0].close_price;
+          const prevPrice = prices[1]?.close_price || prices[0].close_price;
+          const change = simplizePrice?.change || (currentPrice - prevPrice);
+          const changePercent = simplizePrice?.changePercent || (prevPrice > 0 ? (change / prevPrice) * 100 : 0);
           
           setStockInfo({
             symbol: selectedSymbol,
             name: company?.company_name || selectedSymbol,
-            price: latestPrice.close_price, // Price already in VND
+            price: currentPrice, // Realtime price from Simplize
             change: change,
             changePercent: Math.round(changePercent * 100) / 100,
-            volume: latestPrice.volume,
+            volume: simplizePrice?.volume || prices[0].volume,
             // Calculate market cap from outstanding shares * price
-            // outstanding_shares is in shares, price is in VND
             marketCap: company?.outstanding_shares 
-              ? company.outstanding_shares * latestPrice.close_price 
+              ? company.outstanding_shares * currentPrice 
               : undefined
           });
           
@@ -1303,8 +1478,48 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
     fetchStockData();
   }, [selectedSymbol, timeframe]);
 
-  // AI Alerts
-  const aiAlerts = useMemo(() => analyzeTechnicalSignals(chartData), [chartData]);
+  // AI Alerts - GPT powered
+  const [aiAlerts, setAiAlerts] = useState<AISignal[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Fetch AI signals when stock data changes
+  useEffect(() => {
+    const fetchAISignals = async () => {
+      if (chartData.length < 5 || !stockInfo) return;
+      
+      setAiLoading(true);
+      try {
+        const last = chartData[chartData.length - 1];
+        const prev = chartData[chartData.length - 2];
+        
+        const signals = await analyzeStockWithGPT({
+          symbol: selectedSymbol,
+          currentPrice: last.close,
+          priceChange: last.close - prev.close,
+          priceChangePercent: ((last.close - prev.close) / prev.close) * 100,
+          volume: last.volume,
+          high: last.high,
+          low: last.low,
+          open: last.open,
+          ma20: last.ma20,
+          rsi: last.rsi,
+          recentPrices: chartData.slice(-10).map(d => ({
+            date: d.date,
+            close: d.close,
+            volume: d.volume
+          }))
+        });
+        
+        setAiAlerts(signals);
+      } catch (error) {
+        console.error('Error fetching AI signals:', error);
+      } finally {
+        setAiLoading(false);
+      }
+    };
+
+    fetchAISignals();
+  }, [chartData, stockInfo, selectedSymbol]);
   
   // Technical Indicators - calculated from chart data
   const techIndicators = useMemo(() => calculateTechnicalIndicators(chartData), [chartData]);
@@ -1392,23 +1607,46 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             </div>
           </div>
 
-          {/* News Sentiment Widget - Moved here */}
-          <div className="hidden md:flex items-center gap-3 bg-white dark:bg-slate-800/30 rounded-xl px-4 py-2 border border-slate-200 dark:border-white/5">
+          {/* News Sentiment Widget - Enhanced with Chart */}
+          <div className="hidden md:flex items-center gap-4 bg-white dark:bg-slate-800/30 rounded-xl px-4 py-2.5 border border-slate-200 dark:border-white/5">
             <div className="flex items-center gap-1.5">
               <Newspaper size={14} className="text-slate-400" />
               <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Cảm xúc Tin tức</span>
             </div>
-            <div className="flex items-center gap-2 flex-1">
-              <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full flex overflow-hidden max-w-[120px]">
-                <div className="w-[70%] bg-emerald-500 h-full"></div>
-                <div className="w-[10%] bg-slate-400 h-full"></div>
-                <div className="w-[20%] bg-rose-500 h-full"></div>
+            
+            {/* Mini Donut Chart */}
+            <div className="relative w-10 h-10">
+              <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+                {/* Background circle */}
+                <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
+                {/* Positive (green) - 70% */}
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#10b981" strokeWidth="4" strokeDasharray="61.6 88" strokeDashoffset="0" strokeLinecap="round" />
+                {/* Neutral (gray) - 10% */}
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#94a3b8" strokeWidth="4" strokeDasharray="8.8 88" strokeDashoffset="-61.6" strokeLinecap="round" />
+                {/* Negative (red) - 20% */}
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#ef4444" strokeWidth="4" strokeDasharray="17.6 88" strokeDashoffset="-70.4" strokeLinecap="round" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[8px] font-bold text-emerald-500">70%</span>
               </div>
-              <span className="text-xs font-bold text-emerald-500">Tích cực</span>
             </div>
-            <div className="flex gap-3 text-[10px] text-slate-500">
-              <span>70% Bull</span>
-              <span>20% Bear</span>
+            
+            {/* Sentiment Label */}
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-emerald-500">Tích cực</span>
+              <span className="text-[10px] text-slate-400">Xu hướng tốt</span>
+            </div>
+            
+            {/* Stats */}
+            <div className="flex gap-3 text-[10px] border-l border-slate-200 dark:border-slate-700 pl-3">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                <span className="text-slate-600 dark:text-slate-400">70% Bull</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                <span className="text-slate-600 dark:text-slate-400">20% Bear</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1442,17 +1680,44 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               {viewMode === 'chart' && (
-                <button
-                  onClick={() => setShowAlerts(!showAlerts)}
-                  className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
-                    showAlerts
-                      ? 'bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/50'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent'
-                  }`}
-                >
-                  <Zap size={12} className={showAlerts ? "fill-current" : ""} />
-                  AI Monitor {showAlerts ? 'ON' : 'OFF'}
-                </button>
+                <>
+                  {/* Chart Mode Toggle */}
+                  <div className="hidden md:flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-full p-0.5">
+                    <button
+                      onClick={() => setChartMode('lite')}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition-all ${
+                        chartMode === 'lite' 
+                          ? 'bg-cyan-500 text-white shadow-sm' 
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+                      }`}
+                    >
+                      ⚡ Lite
+                    </button>
+                    <button
+                      onClick={() => setChartMode('advanced')}
+                      className={`px-2.5 py-1 text-[10px] font-bold rounded-full transition-all ${
+                        chartMode === 'advanced' 
+                          ? 'bg-indigo-600 text-white shadow-sm' 
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'
+                      }`}
+                    >
+                      🎯 Pro
+                    </button>
+                  </div>
+
+                  {/* AI Monitor Toggle */}
+                  <button
+                    onClick={() => setShowAlerts(!showAlerts)}
+                    className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all border ${
+                      showAlerts
+                        ? 'bg-indigo-50 dark:bg-indigo-600/20 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-500/50'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-transparent'
+                    }`}
+                  >
+                    <Zap size={12} className={showAlerts ? "fill-current" : ""} />
+                    AI Monitor {showAlerts ? 'ON' : 'OFF'}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1470,58 +1735,97 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                 </div>
               ) : (
                 <>
-                  {/* TradingView-style Chart */}
+                  {/* Chart Component */}
                   <div className="flex-1 min-h-0 h-full">
-                    <TradingViewChart 
-                      data={chartData.map(d => ({
-                        time: d.date,
-                        date: new Date(),
-                        open: d.open,
-                        high: d.high,
-                        low: d.low,
-                        close: d.close,
-                        volume: d.volume
-                      }))}
-                      symbol={selectedSymbol}
-                      isDark={isDark}
-                      height={520}
-                      showVolume={true}
-                      showMA={true}
-                      currentTimeframe={timeframe}
-                      onTimeframeChange={(tf) => setTimeframe(tf)}
-                    />
+                    {chartMode === 'lite' ? (
+                      <LightweightChart 
+                        data={chartData.map(d => ({
+                          time: d.date,
+                          date: new Date(),
+                          open: d.open,
+                          high: d.high,
+                          low: d.low,
+                          close: d.close,
+                          volume: d.volume
+                        }))}
+                        symbol={selectedSymbol}
+                        isDark={isDark}
+                        height={520}
+                        currentTimeframe={timeframe}
+                        onTimeframeChange={(tf) => setTimeframe(tf)}
+                      />
+                    ) : (
+                      <TradingViewChart 
+                        data={chartData.map(d => ({
+                          time: d.date,
+                          date: new Date(),
+                          open: d.open,
+                          high: d.high,
+                          low: d.low,
+                          close: d.close,
+                          volume: d.volume
+                        }))}
+                        symbol={selectedSymbol}
+                        isDark={isDark}
+                        height={520}
+                        showVolume={true}
+                        showMA={true}
+                        currentTimeframe={timeframe}
+                        onTimeframeChange={(tf) => setTimeframe(tf)}
+                      />
+                    )}
                   </div>
 
-                  {/* AI Alerts Overlay */}
-                  {showAlerts && aiAlerts.length > 0 && (
+                  {/* AI Alerts Overlay - GPT Powered */}
+                  {showAlerts && (
                     <div className="absolute top-4 right-4 md:w-72 bg-white/90 dark:bg-[#0b0f19]/90 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden z-20">
                       <div className="bg-gradient-to-r from-indigo-100/50 to-purple-100/50 dark:from-indigo-900/50 dark:to-purple-900/50 p-3 border-b border-slate-200 dark:border-white/10 flex justify-between items-center">
                         <div className="flex items-center gap-2">
                           <Zap size={14} className="text-yellow-500 fill-yellow-500" />
                           <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">Tín hiệu AI</span>
+                          <span className="text-[8px] px-1.5 py-0.5 rounded bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-bold">GPT</span>
                         </div>
-                        <span className="flex h-2 w-2 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
+                        {aiLoading ? (
+                          <div className="w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+                        ) : (
+                          <span className="flex h-2 w-2 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                        )}
                       </div>
                       <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                        {aiAlerts.map((alert) => (
-                          <div key={alert.id} className="p-3 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
-                            <div className="flex justify-between items-start mb-1">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                                alert.type === 'success' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
-                                alert.type === 'warning' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
-                                alert.type === 'danger' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' :
-                                'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
-                              }`}>
-                                {alert.title}
-                              </span>
-                              <span className="text-[10px] text-slate-400">{alert.timestamp}</span>
-                            </div>
-                            <p className="text-xs text-slate-600 dark:text-slate-300 leading-snug">{alert.message}</p>
+                        {aiLoading ? (
+                          <div className="p-4 text-center">
+                            <div className="text-xs text-slate-500">Đang phân tích với AI...</div>
                           </div>
-                        ))}
+                        ) : aiAlerts.length > 0 ? (
+                          aiAlerts.map((alert) => (
+                            <div key={alert.id} className="p-3 border-b border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                                  alert.type === 'success' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                                  alert.type === 'warning' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
+                                  alert.type === 'danger' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20' :
+                                  'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                                }`}>
+                                  {alert.title}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {alert.confidence && (
+                                    <span className="text-[8px] text-slate-400">{Math.round(alert.confidence * 100)}%</span>
+                                  )}
+                                  <span className="text-[10px] text-slate-400">{alert.timestamp}</span>
+                                </div>
+                              </div>
+                              <p className="text-xs text-slate-600 dark:text-slate-300 leading-snug">{alert.message}</p>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-4 text-center">
+                            <div className="text-xs text-slate-500">Chưa có tín hiệu mới</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2058,14 +2362,33 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
         {/* Strategy */}
         <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-indigo-500/20 h-[200px] overflow-hidden">
-          <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center gap-2 shrink-0">
-            <Target size={18} className="text-indigo-500" />
-            <span className="font-bold text-slate-900 dark:text-white text-sm">
-              Chiến lược giao dịch
-            </span>
+          <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Target size={18} className="text-indigo-500" />
+              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                Chiến lược giao dịch
+              </span>
+            </div>
+            {tradingStrategy?.strategy_type && (
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  tradingStrategy.strategy_type === 'Theo xu hướng' ||
+                  tradingStrategy.strategy_type === 'Breakout'
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    : tradingStrategy.strategy_type === 'Đứng ngoài' ||
+                        tradingStrategy.strategy_type === 'Chốt lời'
+                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                      : tradingStrategy.strategy_type === 'Bắt đáy'
+                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                }`}
+              >
+                {tradingStrategy.strategy_type}
+              </span>
+            )}
           </div>
 
-          <div className="p-4 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
+          <div className="p-3 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
             <div className="flex items-center justify-between p-2 bg-teal-500/10 border border-teal-500/20 rounded-lg">
               <div className="flex items-center gap-2">
                 <CheckCircle2

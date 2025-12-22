@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test GPT-5-Nano Signal</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; padding: 30px; background: #0f172a; color: #e2e8f0; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #38bdf8; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .btn { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; border: none; 
+               padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow: auto; font-size: 12px; }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #3b82f6; }
+        .signal { padding: 12px; margin: 8px 0; border-radius: 8px; border-left: 4px solid; }
+        .signal.success { background: rgba(34,197,94,0.1); border-color: #22c55e; }
+        .signal.warning { background: rgba(245,158,11,0.1); border-color: #f59e0b; }
+        .signal.danger { background: rgba(239,68,68,0.1); border-color: #ef4444; }
+        .signal.info { background: rgba(59,130,246,0.1); border-color: #3b82f6; }
+        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #6366f1; 
+                   border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test GPT-5-Nano Signal Analysis</h1>
+        
+        <div class="card">
+            <h3>📊 Dữ liệu test (VNM)</h3>
+            <pre id="testData"></pre>
+        </div>
+
+        <button class="btn" id="testBtn" onclick="testGPT()">
+            🚀 Test GPT-5-Nano
+        </button>
+
+        <div class="card" id="result" style="display:none;">
+            <h3>📡 Kết quả</h3>
+            <div id="status"></div>
+            <div id="signals"></div>
+            <h4>Raw Response:</h4>
+            <pre id="rawResponse"></pre>
+        </div>
+    </div>
+
+    <script>
+        const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY_HERE';
+        
+        // Test data
+        const testStockData = {
+            symbol: 'VNM',
+            currentPrice: 72500,
+            priceChange: 1200,
+            priceChangePercent: 1.68,
+            volume: 2500000,
+            high: 73000,
+            low: 71500,
+            open: 71800,
+            ma20: 71000,
+            ma50: 69500,
+            rsi: 58,
+            recentPrices: [
+                { date: '2024-12-16', close: 70500, volume: 1800000 },
+                { date: '2024-12-17', close: 71000, volume: 2100000 },
+                { date: '2024-12-18', close: 71300, volume: 1900000 },
+                { date: '2024-12-19', close: 71300, volume: 2000000 },
+                { date: '2024-12-20', close: 72500, volume: 2500000 }
+            ]
+        };
+
+        document.getElementById('testData').textContent = JSON.stringify(testStockData, null, 2);
+
+        const SIGNAL_PROMPT = `Bạn là chuyên gia phân tích kỹ thuật chứng khoán Việt Nam. Phân tích dữ liệu cổ phiếu và đưa ra 2-4 tín hiệu giao dịch quan trọng nhất.
+
+Mỗi tín hiệu cần có:
+- type: "success" (tín hiệu tích cực), "warning" (cảnh báo), "danger" (rủi ro cao), "info" (thông tin)
+- title: Tiêu đề ngắn gọn (tối đa 20 ký tự)
+- message: Mô tả chi tiết (tối đa 80 ký tự)
+- confidence: Độ tin cậy 0.0-1.0
+
+Trả về JSON array:
+[
+  {"type": "success", "title": "Tín hiệu Mua", "message": "Giá vượt MA20, RSI hồi phục từ vùng quá bán", "confidence": 0.8},
+  ...
+]
+
+Chỉ trả về JSON array, không có text khác.`;
+
+        async function testGPT() {
+            const btn = document.getElementById('testBtn');
+            const resultDiv = document.getElementById('result');
+            const statusDiv = document.getElementById('status');
+            const signalsDiv = document.getElementById('signals');
+            const rawDiv = document.getElementById('rawResponse');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="loading"></span> Đang gọi GPT-5-Nano...';
+            resultDiv.style.display = 'block';
+            statusDiv.innerHTML = '<span class="loading"></span> Đang kết nối...';
+            signalsDiv.innerHTML = '';
+            rawDiv.textContent = '';
+
+            const userMessage = `
+Phân tích cổ phiếu ${testStockData.symbol}:
+- Giá hiện tại: ${testStockData.currentPrice.toLocaleString()} VND
+- Thay đổi: ${testStockData.priceChangePercent >= 0 ? '+' : ''}${testStockData.priceChangePercent.toFixed(2)}%
+- Khối lượng: ${(testStockData.volume / 1000000).toFixed(2)}M
+- Cao/Thấp phiên: ${testStockData.high.toLocaleString()} / ${testStockData.low.toLocaleString()}
+- MA20: ${testStockData.ma20.toLocaleString()}
+- MA50: ${testStockData.ma50.toLocaleString()}
+- RSI(14): ${testStockData.rsi}
+- Giá 5 phiên gần nhất: ${testStockData.recentPrices.map(p => p.close.toLocaleString()).join(' → ')}
+`;
+
+            try {
+                // Test với gpt-5-nano
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-5-nano',
+                        messages: [
+                            { role: 'system', content: SIGNAL_PROMPT },
+                            { role: 'user', content: userMessage },
+                        ],
+                        temperature: 0.4,
+                        max_tokens: 500,
+                    }),
+                });
+
+                const data = await response.json();
+                rawDiv.textContent = JSON.stringify(data, null, 2);
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || `HTTP ${response.status}`);
+                }
+
+                const content = data.choices[0]?.message?.content;
+                if (!content) {
+                    throw new Error('No content in response');
+                }
+
+                // Parse signals
+                const jsonMatch = content.match(/\[[\s\S]*\]/);
+                if (!jsonMatch) {
+                    throw new Error('Invalid JSON format in response');
+                }
+
+                const signals = JSON.parse(jsonMatch[0]);
+                
+                statusDiv.innerHTML = `<span class="success">✅ GPT-5-Nano hoạt động!</span> 
+                    <span class="badge" style="background:#22c55e;color:white;">Model: gpt-5-nano</span>
+                    <br><small>Tokens: ${data.usage?.total_tokens || 'N/A'}</small>`;
+
+                // Render signals
+                signalsDiv.innerHTML = '<h4>🎯 Tín hiệu phân tích:</h4>';
+                signals.forEach((signal, i) => {
+                    signalsDiv.innerHTML += `
+                        <div class="signal ${signal.type}">
+                            <strong>${signal.title}</strong>
+                            ${signal.confidence ? `<span class="badge" style="background:#6366f1;color:white;margin-left:8px;">${Math.round(signal.confidence * 100)}%</span>` : ''}
+                            <p style="margin:5px 0 0 0;opacity:0.9;">${signal.message}</p>
+                        </div>
+                    `;
+                });
+
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="error">❌ Lỗi: ${error.message}</span>`;
+                
+                // Nếu model không tồn tại, thử với gpt-4o-mini
+                if (error.message.includes('model') || error.message.includes('does not exist')) {
+                    statusDiv.innerHTML += `<br><br><span class="warning">⚠️ Model gpt-5-nano không khả dụng. Thử với gpt-4o-mini...</span>`;
+                    
+                    // Retry with gpt-4o-mini
+                    try {
+                        const retryResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                            },
+                            body: JSON.stringify({
+                                model: 'gpt-4o-mini',
+                                messages: [
+                                    { role: 'system', content: SIGNAL_PROMPT },
+                                    { role: 'user', content: userMessage },
+                                ],
+                                temperature: 0.4,
+                                max_tokens: 500,
+                            }),
+                        });
+
+                        const retryData = await retryResponse.json();
+                        rawDiv.textContent = JSON.stringify(retryData, null, 2);
+
+                        if (retryResponse.ok) {
+                            const content = retryData.choices[0]?.message?.content;
+                            const jsonMatch = content.match(/\[[\s\S]*\]/);
+                            const signals = JSON.parse(jsonMatch[0]);
+
+                            statusDiv.innerHTML = `<span class="success">✅ Fallback thành công với gpt-4o-mini</span>
+                                <span class="badge" style="background:#f59e0b;color:white;">Model: gpt-4o-mini</span>`;
+
+                            signalsDiv.innerHTML = '<h4>🎯 Tín hiệu phân tích:</h4>';
+                            signals.forEach((signal) => {
+                                signalsDiv.innerHTML += `
+                                    <div class="signal ${signal.type}">
+                                        <strong>${signal.title}</strong>
+                                        ${signal.confidence ? `<span class="badge" style="background:#6366f1;color:white;margin-left:8px;">${Math.round(signal.confidence * 100)}%</span>` : ''}
+                                        <p style="margin:5px 0 0 0;opacity:0.9;">${signal.message}</p>
+                                    </div>
+                                `;
+                            });
+                        }
+                    } catch (retryError) {
+                        statusDiv.innerHTML += `<br><span class="error">Retry failed: ${retryError.message}</span>`;
+                    }
+                }
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '🚀 Test GPT-5-Nano';
+        }
+    </script>
+</body>
+</html>

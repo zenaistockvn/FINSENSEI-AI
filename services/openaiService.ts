@@ -1,6 +1,6 @@
 // OpenAI Service for Natural Language Stock Filtering
 const OPENAI_API_KEY = (import.meta as any).env?.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
-const OPENAI_MODEL = 'gpt-4o-mini'; // Using gpt-4o-mini as gpt-5-nano is not available yet
+const OPENAI_MODEL = 'gpt-4o-mini'; // GPT-4o-mini - nhanh và tiết kiệm
 
 interface FilterConfig {
   rsMin: number;
