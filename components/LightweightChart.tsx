@@ -1,13 +1,14 @@
 /**
  * LightweightChart - Professional Candlestick Chart
- * Sử dụng TradingView Lightweight Charts library
- * Performance tối ưu với Canvas 2D rendering
+ * Sử dụng TradingView Lightweight Charts v4 library chính thức
+ * Mượt mà, chuyên nghiệp như TradingView
  */
 
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart, ColorType, CrosshairMode, IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { 
   TrendingUp, TrendingDown, Layers, ChevronDown, RefreshCw, 
-  ZoomIn, ZoomOut, Crosshair, Eye, EyeOff, Camera, Maximize2, Activity
+  ZoomIn, ZoomOut, Activity, Camera
 } from 'lucide-react';
 
 interface CandleData {
@@ -29,45 +30,65 @@ interface LightweightChartProps {
   currentTimeframe?: string;
 }
 
-// Optimized indicator calculations with memoization
-const calculateMA = (closes: number[], period: number): number[] => {
-  const result: number[] = new Array(closes.length).fill(NaN);
-  let sum = 0;
+// Calculate MA
+const calculateMA = (data: CandleData[], period: number) => {
+  const result: { time: Time; value: number }[] = [];
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += data[i - j].close;
+    }
+    result.push({
+      time: data[i].time as Time,
+      value: sum / period
+    });
+  }
+  return result;
+};
+
+// Calculate EMA
+const calculateEMA = (data: CandleData[], period: number) => {
+  const result: { time: Time; value: number }[] = [];
+  const multiplier = 2 / (period + 1);
+  let ema = data[0].close;
   
-  for (let i = 0; i < closes.length; i++) {
-    sum += closes[i];
+  for (let i = 0; i < data.length; i++) {
+    ema = (data[i].close - ema) * multiplier + ema;
     if (i >= period - 1) {
-      if (i >= period) sum -= closes[i - period];
-      result[i] = sum / period;
+      result.push({
+        time: data[i].time as Time,
+        value: ema
+      });
     }
   }
   return result;
 };
 
-const calculateRSI = (closes: number[], period: number = 14): number[] => {
-  const result: number[] = new Array(closes.length).fill(NaN);
-  let avgGain = 0, avgLoss = 0;
+// Calculate Bollinger Bands
+const calculateBollingerBands = (data: CandleData[], period: number = 20, stdDev: number = 2) => {
+  const upper: { time: Time; value: number }[] = [];
+  const lower: { time: Time; value: number }[] = [];
+  const middle: { time: Time; value: number }[] = [];
   
-  for (let i = 1; i < closes.length; i++) {
-    const change = closes[i] - closes[i - 1];
-    const gain = change > 0 ? change : 0;
-    const loss = change < 0 ? -change : 0;
-    
-    if (i <= period) {
-      avgGain += gain;
-      avgLoss += loss;
-      if (i === period) {
-        avgGain /= period;
-        avgLoss /= period;
-        result[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
-      }
-    } else {
-      avgGain = (avgGain * (period - 1) + gain) / period;
-      avgLoss = (avgLoss * (period - 1) + loss) / period;
-      result[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+  for (let i = period - 1; i < data.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += data[i - j].close;
     }
+    const ma = sum / period;
+    
+    let variance = 0;
+    for (let j = 0; j < period; j++) {
+      variance += Math.pow(data[i - j].close - ma, 2);
+    }
+    const std = Math.sqrt(variance / period) * stdDev;
+    
+    middle.push({ time: data[i].time as Time, value: ma });
+    upper.push({ time: data[i].time as Time, value: ma + std });
+    lower.push({ time: data[i].time as Time, value: ma - std });
   }
-  return result;
+  
+  return { upper, lower, middle };
 };
 
 const LightweightChart: React.FC<LightweightChartProps> = ({
@@ -78,330 +99,278 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
   onTimeframeChange,
   currentTimeframe = '1Y'
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>(0);
-  const lastRenderRef = useRef<number>(0);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
   
-  const [dimensions, setDimensions] = useState({ width: 800, height });
-  const [viewState, setViewState] = useState({ zoom: 1, pan: 0 });
-  const [crosshair, setCrosshair] = useState({ x: 0, y: 0, visible: false });
-  const [hoveredCandle, setHoveredCandle] = useState<CandleData | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, pan: 0 });
-  
-  const [indicators, setIndicators] = useState({
-    ma20: true, ma50: true, volume: true, rsi: false
-  });
+  const [hoveredData, setHoveredData] = useState<CandleData | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [indicators, setIndicators] = useState({
+    ma20: true,
+    ma50: true,
+    ema20: false,
+    volume: true,
+    bollinger: false
+  });
 
-  // Colors - memoized
-  const colors = useMemo(() => ({
+  // Colors
+  const colors = {
     bg: isDark ? '#0f172a' : '#ffffff',
     grid: isDark ? '#1e293b' : '#f1f5f9',
     text: isDark ? '#94a3b8' : '#64748b',
-    textBright: isDark ? '#e2e8f0' : '#1e293b',
     bullish: '#22c55e',
     bearish: '#ef4444',
     ma20: '#8b5cf6',
     ma50: '#ec4899',
-    crosshair: isDark ? '#475569' : '#cbd5e1',
-  }), [isDark]);
+    ema20: '#f59e0b',
+    bbUpper: '#06b6d4',
+    bbLower: '#06b6d4',
+    bbMiddle: '#0ea5e9'
+  };
 
-  // Pre-calculate indicators - memoized
-  const calculatedIndicators = useMemo(() => {
-    if (data.length === 0) return null;
-    const closes = data.map(d => d.close);
-    return {
-      ma20: calculateMA(closes, 20),
-      ma50: calculateMA(closes, 50),
-      rsi: calculateRSI(closes, 14)
-    };
-  }, [data]);
-
-  // Visible data slice - memoized
-  const visibleData = useMemo(() => {
-    const visibleCount = Math.floor(data.length / viewState.zoom);
-    const startIdx = Math.max(0, Math.min(data.length - visibleCount, Math.floor(viewState.pan)));
-    return { data: data.slice(startIdx, startIdx + visibleCount), startIdx };
-  }, [data, viewState.zoom, viewState.pan]);
-
-  // Price scale - memoized
-  const priceScale = useMemo(() => {
-    if (visibleData.data.length === 0) return { min: 0, max: 100, range: 100 };
-    const prices = visibleData.data.flatMap(d => [d.high, d.low]);
-    const min = Math.min(...prices);
-    const max = Math.max(...prices);
-    const padding = (max - min) * 0.05;
-    return { min: min - padding, max: max + padding, range: max - min + padding * 2 };
-  }, [visibleData.data]);
-
-  // Volume scale - memoized
-  const volumeMax = useMemo(() => {
-    if (visibleData.data.length === 0) return 1;
-    return Math.max(...visibleData.data.map(d => d.volume)) * 1.1;
-  }, [visibleData.data]);
-
-  // Resize observer
+  // Initialize chart
   useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver(entries => {
-      const { width, height: h } = entries[0].contentRect;
-      setDimensions({ width, height: h || height });
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [height]);
+    if (!chartContainerRef.current || data.length === 0) return;
 
-  // Optimized render with requestAnimationFrame
-  const render = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || visibleData.data.length === 0) return;
-    
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const w = dimensions.width;
-    const h = dimensions.height;
-    
-    // Set canvas size only if changed
-    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      ctx.scale(dpr, dpr);
+    // Clear previous chart
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
     }
 
-    // Layout
-    const margin = { top: 10, right: 70, bottom: 30, left: 10 };
-    const chartHeight = indicators.volume ? h * 0.75 - margin.top : h - margin.top - margin.bottom;
-    const volumeTop = h - margin.bottom - (indicators.volume ? h * 0.18 : 0);
-    const volumeHeight = indicators.volume ? h * 0.15 : 0;
-    const chartWidth = w - margin.left - margin.right;
-    
-    const candleWidth = Math.max(2, (chartWidth / visibleData.data.length) * 0.75);
-    const gap = (chartWidth - candleWidth * visibleData.data.length) / (visibleData.data.length + 1);
-    
-    // Helper functions
-    const priceToY = (price: number) => margin.top + chartHeight - ((price - priceScale.min) / priceScale.range) * chartHeight;
-    const indexToX = (i: number) => margin.left + gap + i * (candleWidth + gap) + candleWidth / 2;
-
-    // Clear with background
-    ctx.fillStyle = colors.bg;
-    ctx.fillRect(0, 0, w, h);
-
-    // Draw watermark
-    ctx.save();
-    ctx.globalAlpha = 0.03;
-    ctx.font = 'bold 40px Inter, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = isDark ? '#fff' : '#000';
-    ctx.fillText('FINSENSEI AI', w / 2, h / 2);
-    ctx.restore();
-
-    // Draw grid
-    ctx.strokeStyle = colors.grid;
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 5; i++) {
-      const y = margin.top + (chartHeight / 5) * i;
-      ctx.beginPath();
-      ctx.moveTo(margin.left, y);
-      ctx.lineTo(margin.left + chartWidth, y);
-      ctx.stroke();
-      
-      // Price labels
-      const price = priceScale.max - (priceScale.range / 5) * i;
-      ctx.fillStyle = colors.text;
-      ctx.font = '11px Inter';
-      ctx.textAlign = 'left';
-      ctx.fillText(price.toLocaleString('en-US', { maximumFractionDigits: 0 }), margin.left + chartWidth + 5, y + 4);
-    }
-
-    // Draw MA lines
-    if (calculatedIndicators) {
-      const drawMA = (maData: number[], color: string) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        let started = false;
-        for (let i = 0; i < visibleData.data.length; i++) {
-          const val = maData[visibleData.startIdx + i];
-          if (!isNaN(val)) {
-            const x = indexToX(i);
-            const y = priceToY(val);
-            if (!started) { ctx.moveTo(x, y); started = true; }
-            else ctx.lineTo(x, y);
-          }
+    // Create chart
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
+      height: height,
+      layout: {
+        background: { type: ColorType.Solid, color: colors.bg },
+        textColor: colors.text,
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+      },
+      grid: {
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid }
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: {
+          width: 1,
+          color: isDark ? '#475569' : '#cbd5e1',
+          style: 2,
+          labelBackgroundColor: isDark ? '#334155' : '#e2e8f0'
+        },
+        horzLine: {
+          width: 1,
+          color: isDark ? '#475569' : '#cbd5e1',
+          style: 2,
+          labelBackgroundColor: isDark ? '#334155' : '#e2e8f0'
         }
-        ctx.stroke();
-      };
-
-      if (indicators.ma20) drawMA(calculatedIndicators.ma20, colors.ma20);
-      if (indicators.ma50) drawMA(calculatedIndicators.ma50, colors.ma50);
-    }
-
-    // Draw candlesticks - optimized batch rendering
-    visibleData.data.forEach((candle, i) => {
-      const x = indexToX(i);
-      const isUp = candle.close >= candle.open;
-      const color = isUp ? colors.bullish : colors.bearish;
-      
-      const openY = priceToY(candle.open);
-      const closeY = priceToY(candle.close);
-      const highY = priceToY(candle.high);
-      const lowY = priceToY(candle.low);
-
-      // Wick
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, highY);
-      ctx.lineTo(x, lowY);
-      ctx.stroke();
-
-      // Body
-      const bodyTop = Math.min(openY, closeY);
-      const bodyHeight = Math.max(1, Math.abs(closeY - openY));
-      ctx.fillStyle = color;
-      ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+      },
+      rightPriceScale: {
+        borderColor: colors.grid,
+        scaleMargins: { top: 0.1, bottom: 0.2 }
+      },
+      timeScale: {
+        borderColor: colors.grid,
+        timeVisible: true,
+        secondsVisible: false
+      },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true }
     });
 
-    // Draw volume
-    if (indicators.volume) {
-      visibleData.data.forEach((candle, i) => {
-        const x = indexToX(i);
-        const isUp = candle.close >= candle.open;
-        const barHeight = (candle.volume / volumeMax) * volumeHeight;
-        
-        ctx.fillStyle = isUp 
-          ? (isDark ? 'rgba(34,197,94,0.4)' : 'rgba(34,197,94,0.3)')
-          : (isDark ? 'rgba(239,68,68,0.4)' : 'rgba(239,68,68,0.3)');
-        ctx.fillRect(x - candleWidth / 2, volumeTop + volumeHeight - barHeight, candleWidth, barHeight);
-      });
-    }
+    chartRef.current = chart;
 
-    // Draw crosshair
-    if (crosshair.visible) {
-      ctx.strokeStyle = colors.crosshair;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      
-      ctx.beginPath();
-      ctx.moveTo(crosshair.x, margin.top);
-      ctx.lineTo(crosshair.x, h - margin.bottom);
-      ctx.stroke();
-      
-      ctx.beginPath();
-      ctx.moveTo(margin.left, crosshair.y);
-      ctx.lineTo(margin.left + chartWidth, crosshair.y);
-      ctx.stroke();
-      
-      ctx.setLineDash([]);
-
-      // Price label
-      if (crosshair.y >= margin.top && crosshair.y <= margin.top + chartHeight) {
-        const price = priceScale.max - ((crosshair.y - margin.top) / chartHeight) * priceScale.range;
-        ctx.fillStyle = isDark ? '#1e293b' : '#e2e8f0';
-        ctx.fillRect(margin.left + chartWidth, crosshair.y - 10, 65, 20);
-        ctx.fillStyle = colors.textBright;
-        ctx.font = '11px Inter';
-        ctx.fillText(price.toLocaleString('en-US', { maximumFractionDigits: 0 }), margin.left + chartWidth + 5, crosshair.y + 4);
-      }
-    }
-
-    // Date labels
-    const labelInterval = Math.ceil(visibleData.data.length / 8);
-    ctx.fillStyle = colors.text;
-    ctx.font = '10px Inter';
-    ctx.textAlign = 'center';
-    visibleData.data.forEach((candle, i) => {
-      if (i % labelInterval === 0) {
-        ctx.fillText(candle.time, indexToX(i), h - 10);
-      }
+    // Candlestick series
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: colors.bullish,
+      downColor: colors.bearish,
+      borderUpColor: colors.bullish,
+      borderDownColor: colors.bearish,
+      wickUpColor: colors.bullish,
+      wickDownColor: colors.bearish
     });
 
-  }, [visibleData, dimensions, colors, priceScale, volumeMax, indicators, calculatedIndicators, crosshair, isDark]);
-
-  // Throttled render with RAF
-  useEffect(() => {
-    const now = performance.now();
-    if (now - lastRenderRef.current < 16) return; // ~60fps cap
-    
-    lastRenderRef.current = now;
-    animationRef.current = requestAnimationFrame(render);
-    
-    return () => cancelAnimationFrame(animationRef.current);
-  }, [render]);
-
-
-  // Mouse handlers with throttling
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    setCrosshair({ x, y, visible: true });
-    
-    // Find hovered candle
-    const margin = { left: 10, right: 70 };
-    const chartWidth = dimensions.width - margin.left - margin.right;
-    const candleWidth = Math.max(2, (chartWidth / visibleData.data.length) * 0.75);
-    const gap = (chartWidth - candleWidth * visibleData.data.length) / (visibleData.data.length + 1);
-    
-    const candleIndex = Math.floor((x - margin.left - gap / 2) / (candleWidth + gap));
-    if (candleIndex >= 0 && candleIndex < visibleData.data.length) {
-      setHoveredCandle(visibleData.data[candleIndex]);
-    }
-    
-    // Handle dragging
-    if (isDragging) {
-      const dx = e.clientX - dragStart.x;
-      const candlesPerPixel = visibleData.data.length / chartWidth;
-      const panDelta = dx * candlesPerPixel;
-      const maxPan = Math.max(0, data.length - visibleData.data.length);
-      setViewState(prev => ({
-        ...prev,
-        pan: Math.max(0, Math.min(maxPan, dragStart.pan - panDelta))
-      }));
-    }
-  }, [dimensions, visibleData.data, isDragging, dragStart, data.length]);
-
-  const handleMouseLeave = useCallback(() => {
-    setCrosshair(prev => ({ ...prev, visible: false }));
-    setHoveredCandle(null);
-    setIsDragging(false);
-  }, []);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, pan: viewState.pan });
-  }, [viewState.pan]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  // Smooth zoom with wheel
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    setViewState(prev => ({
-      ...prev,
-      zoom: Math.max(1, Math.min(15, prev.zoom * zoomFactor))
+    // Format data for chart
+    const candleData = data.map(d => ({
+      time: d.time as Time,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close
     }));
-  }, []);
+    candleSeries.setData(candleData);
 
-  // Prevent default wheel behavior
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const handler = (e: WheelEvent) => e.preventDefault();
-    canvas.addEventListener('wheel', handler, { passive: false });
-    return () => canvas.removeEventListener('wheel', handler);
-  }, []);
+    // Volume series
+    if (indicators.volume) {
+      const volumeSeries = chart.addHistogramSeries({
+        color: colors.bullish,
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume'
+      });
+      chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.85, bottom: 0 }
+      });
+      
+      const volumeData = data.map(d => ({
+        time: d.time as Time,
+        value: d.volume,
+        color: d.close >= d.open 
+          ? (isDark ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.4)')
+          : (isDark ? 'rgba(239,68,68,0.5)' : 'rgba(239,68,68,0.4)')
+      }));
+      volumeSeries.setData(volumeData);
+    }
+
+    // MA20
+    if (indicators.ma20 && data.length >= 20) {
+      const ma20Series = chart.addLineSeries({
+        color: colors.ma20,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      ma20Series.setData(calculateMA(data, 20));
+    }
+
+    // MA50
+    if (indicators.ma50 && data.length >= 50) {
+      const ma50Series = chart.addLineSeries({
+        color: colors.ma50,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      ma50Series.setData(calculateMA(data, 50));
+    }
+
+    // EMA20
+    if (indicators.ema20 && data.length >= 20) {
+      const ema20Series = chart.addLineSeries({
+        color: colors.ema20,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      ema20Series.setData(calculateEMA(data, 20));
+    }
+
+    // Bollinger Bands
+    if (indicators.bollinger && data.length >= 20) {
+      const bb = calculateBollingerBands(data, 20, 2);
+      
+      const bbUpperSeries = chart.addLineSeries({
+        color: colors.bbUpper,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      bbUpperSeries.setData(bb.upper);
+      
+      const bbLowerSeries = chart.addLineSeries({
+        color: colors.bbLower,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      bbLowerSeries.setData(bb.lower);
+      
+      const bbMiddleSeries = chart.addLineSeries({
+        color: colors.bbMiddle,
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false
+      });
+      bbMiddleSeries.setData(bb.middle);
+    }
+
+    // Crosshair move handler
+    chart.subscribeCrosshairMove((param) => {
+      if (param.time) {
+        const idx = data.findIndex(d => d.time === param.time);
+        if (idx !== -1) {
+          setHoveredData(data[idx]);
+        }
+      } else {
+        setHoveredData(null);
+      }
+    });
+
+    // Fit content
+    chart.timeScale().fitContent();
+
+    // Resize handler
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({ 
+          width: chartContainerRef.current.clientWidth 
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+    };
+  }, [data, isDark, height, indicators, colors]);
+
+  // Zoom controls
+  const handleZoomIn = () => {
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale();
+      const visibleRange = timeScale.getVisibleLogicalRange();
+      if (visibleRange) {
+        const newRange = {
+          from: visibleRange.from + (visibleRange.to - visibleRange.from) * 0.1,
+          to: visibleRange.to - (visibleRange.to - visibleRange.from) * 0.1
+        };
+        timeScale.setVisibleLogicalRange(newRange);
+      }
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (chartRef.current) {
+      const timeScale = chartRef.current.timeScale();
+      const visibleRange = timeScale.getVisibleLogicalRange();
+      if (visibleRange) {
+        const newRange = {
+          from: visibleRange.from - (visibleRange.to - visibleRange.from) * 0.2,
+          to: visibleRange.to + (visibleRange.to - visibleRange.from) * 0.2
+        };
+        timeScale.setVisibleLogicalRange(newRange);
+      }
+    }
+  };
+
+  const handleReset = () => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+    }
+  };
+
+  const handleScreenshot = () => {
+    if (chartContainerRef.current) {
+      const canvas = chartContainerRef.current.querySelector('canvas');
+      if (canvas) {
+        const link = document.createElement('a');
+        link.download = `${symbol}_chart_${new Date().toISOString().split('T')[0]}.png`;
+        link.href = canvas.toDataURL();
+        link.click();
+      }
+    }
+  };
 
   // Timeframes
   const timeframes = ['1D', '1W', '1M', '3M', '6M', '1Y', '2Y', 'ALL'];
@@ -412,13 +381,16 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
   const priceChange = latestCandle && prevCandle ? latestCandle.close - prevCandle.close : 0;
   const priceChangePercent = prevCandle && prevCandle.close > 0 ? (priceChange / prevCandle.close) * 100 : 0;
   const isUp = priceChange >= 0;
+  const displayCandle = hoveredData || latestCandle;
 
-  // Early return if no data
   if (data.length === 0) {
     return (
       <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="flex items-center justify-center h-[500px] text-slate-500">
-          <p>Đang tải dữ liệu...</p>
+          <div className="text-center">
+            <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>Đang tải dữ liệu biểu đồ...</p>
+          </div>
         </div>
       </div>
     );
@@ -465,19 +437,19 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
         </div>
 
         {/* Center: OHLCV */}
-        {hoveredCandle && (
+        {displayCandle && (
           <div className={`hidden lg:flex items-center gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             <span className={`px-2 py-1 rounded ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}>
-              📅 {hoveredCandle.time}
+              📅 {displayCandle.time}
             </span>
-            <span>O: <span className={isDark ? 'text-white' : 'text-slate-900'}>{hoveredCandle.open.toLocaleString()}</span></span>
-            <span>H: <span className="text-emerald-500">{hoveredCandle.high.toLocaleString()}</span></span>
-            <span>L: <span className="text-rose-500">{hoveredCandle.low.toLocaleString()}</span></span>
-            <span>C: <span className={hoveredCandle.close >= hoveredCandle.open ? 'text-emerald-500' : 'text-rose-500'}>
-              {hoveredCandle.close.toLocaleString()}
+            <span>O: <span className={isDark ? 'text-white' : 'text-slate-900'}>{displayCandle.open.toLocaleString()}</span></span>
+            <span>H: <span className="text-emerald-500">{displayCandle.high.toLocaleString()}</span></span>
+            <span>L: <span className="text-rose-500">{displayCandle.low.toLocaleString()}</span></span>
+            <span>C: <span className={displayCandle.close >= displayCandle.open ? 'text-emerald-500' : 'text-rose-500'}>
+              {displayCandle.close.toLocaleString()}
             </span></span>
             <span>Vol: <span className={isDark ? 'text-white' : 'text-slate-900'}>
-              {(hoveredCandle.volume / 1000000).toFixed(2)}M
+              {(displayCandle.volume / 1000000).toFixed(2)}M
             </span></span>
           </div>
         )}
@@ -494,17 +466,21 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
               <ChevronDown size={12} />
             </button>
             {showMenu && (
-              <div className={`absolute right-0 top-full mt-1 w-40 rounded-lg border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <div className={`absolute right-0 top-full mt-1 w-44 rounded-lg border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
                 <div className="p-2 space-y-1">
                   {[
                     { key: 'ma20', label: 'MA 20', color: colors.ma20 },
                     { key: 'ma50', label: 'MA 50', color: colors.ma50 },
-                    { key: 'volume', label: 'Volume', color: colors.bullish },
-                    { key: 'rsi', label: 'RSI (14)', color: '#a855f7' }
+                    { key: 'ema20', label: 'EMA 20', color: colors.ema20 },
+                    { key: 'bollinger', label: 'Bollinger Bands', color: colors.bbMiddle },
+                    { key: 'volume', label: 'Volume', color: colors.bullish }
                   ].map(({ key, label, color }) => (
                     <button
                       key={key}
-                      onClick={() => setIndicators(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
+                      onClick={() => {
+                        setIndicators(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+                        setShowMenu(false);
+                      }}
                       className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}
                     >
                       <span className="flex items-center gap-2">
@@ -523,43 +499,39 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
 
           {/* Zoom controls */}
           <button
-            onClick={() => setViewState(prev => ({ ...prev, zoom: Math.min(15, prev.zoom * 1.3) }))}
+            onClick={handleZoomIn}
             className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+            title="Zoom In"
           >
             <ZoomIn size={14} />
           </button>
           <button
-            onClick={() => setViewState(prev => ({ ...prev, zoom: Math.max(1, prev.zoom / 1.3) }))}
+            onClick={handleZoomOut}
             className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+            title="Zoom Out"
           >
             <ZoomOut size={14} />
           </button>
-          {viewState.zoom > 1 && (
-            <span className={`px-2 py-1 text-xs font-medium rounded ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>
-              {viewState.zoom.toFixed(1)}x
-            </span>
-          )}
           <button
-            onClick={() => setViewState({ zoom: 1, pan: 0 })}
+            onClick={handleReset}
             className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+            title="Reset View"
           >
             <RefreshCw size={14} />
+          </button>
+          <button
+            onClick={handleScreenshot}
+            className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
+            title="Screenshot"
+          >
+            <Camera size={14} />
           </button>
         </div>
       </div>
 
-      {/* Chart Canvas */}
-      <div ref={containerRef} className="relative" style={{ height: `${height}px` }}>
-        <canvas
-          ref={canvasRef}
-          className={`w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-crosshair'}`}
-          style={{ width: '100%', height: '100%' }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onWheel={handleWheel}
-        />
+      {/* Chart Container */}
+      <div className="relative">
+        <div ref={chartContainerRef} style={{ height: `${height}px` }} />
         
         {/* MA Legend */}
         <div className={`absolute top-2 left-2 flex gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -575,6 +547,25 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
               MA50
             </span>
           )}
+          {indicators.ema20 && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: colors.ema20 }} />
+              EMA20
+            </span>
+          )}
+          {indicators.bollinger && (
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5 rounded" style={{ backgroundColor: colors.bbMiddle }} />
+              BB(20,2)
+            </span>
+          )}
+        </div>
+
+        {/* Watermark */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className={`text-4xl font-bold ${isDark ? 'text-white/[0.03]' : 'text-black/[0.03]'}`}>
+            FINSENSEI AI
+          </span>
         </div>
       </div>
     </div>
