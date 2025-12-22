@@ -169,56 +169,129 @@ export function calculateSenAIDiagnosis(input: SenAIInput): SenAIDiagnosis {
 }
 
 /**
- * Tính Risk Analysis
+ * Tính Risk Analysis - Cải tiến cho thị trường Việt Nam
+ * Công thức mới với nhiều yếu tố hơn và trọng số phù hợp
  */
 export function calculateSenAIRisk(
   input: SenAIInput,
   volatility: number,
-  maxDrawdown: number
+  maxDrawdown: number,
+  beta?: number // Beta từ Simplize nếu có
 ): SenAIRisk {
-  // Upside Probability
+  // ========== XÁC SUẤT TĂNG NGẮN HẠN (15-85%) ==========
   let upsideProbability = 50;
   
-  if (input.currentPrice > input.ma20) upsideProbability += 8;
-  if (input.currentPrice > input.ma50) upsideProbability += 7;
+  // 1. Xu hướng MA (max ±15)
+  if (input.currentPrice > input.ma20) upsideProbability += 5;
+  else upsideProbability -= 3;
+  if (input.currentPrice > input.ma50) upsideProbability += 5;
+  else upsideProbability -= 3;
   if (input.currentPrice > input.ma200) upsideProbability += 5;
+  else upsideProbability -= 3;
   
-  if (input.rsi14 < 30) upsideProbability += 12;
-  else if (input.rsi14 < 40) upsideProbability += 10;
-  else if (input.rsi14 > 70) upsideProbability -= 10;
-  else if (input.rsi14 > 60) upsideProbability -= 8;
+  // 2. MA Cross - xu hướng trung hạn (max ±8)
+  if (input.ma20 > input.ma50) upsideProbability += 5;
+  else upsideProbability -= 3;
+  if (input.ma50 > input.ma200) upsideProbability += 3;
+  else upsideProbability -= 2;
   
-  if (input.pricePosition < 30) upsideProbability += 10;
-  else if (input.pricePosition < 50) upsideProbability += 5;
-  else if (input.pricePosition > 80) upsideProbability -= 5;
+  // 3. RSI - momentum (max ±12)
+  if (input.rsi14 < 25) upsideProbability += 12; // Cực kỳ oversold
+  else if (input.rsi14 < 35) upsideProbability += 8;
+  else if (input.rsi14 < 45) upsideProbability += 4;
+  else if (input.rsi14 > 75) upsideProbability -= 12; // Cực kỳ overbought
+  else if (input.rsi14 > 65) upsideProbability -= 6;
   
-  if (input.pe > 0 && input.pe < 15) upsideProbability += 5;
-  if (input.roe > 15) upsideProbability += 5;
+  // 4. Vị trí giá trong range 52 tuần (max ±10)
+  if (input.pricePosition < 20) upsideProbability += 10; // Gần đáy 52w
+  else if (input.pricePosition < 35) upsideProbability += 6;
+  else if (input.pricePosition < 50) upsideProbability += 3;
+  else if (input.pricePosition > 85) upsideProbability -= 8; // Gần đỉnh 52w
+  else if (input.pricePosition > 70) upsideProbability -= 4;
+  
+  // 5. Định giá cơ bản (max ±8)
+  if (input.pe > 0 && input.pe < 10) upsideProbability += 5;
+  else if (input.pe > 0 && input.pe < 15) upsideProbability += 3;
+  else if (input.pe > 25) upsideProbability -= 3;
+  
+  if (input.roe > 20) upsideProbability += 3;
+  else if (input.roe > 15) upsideProbability += 2;
+  else if (input.roe < 8) upsideProbability -= 2;
+  
+  // 6. Volume confirmation (max ±5)
+  const volumeRatio = input.avgVolume > 0 ? input.volume / input.avgVolume : 1;
+  if (volumeRatio > 1.5 && input.priceChangePercent > 0) upsideProbability += 5;
+  else if (volumeRatio > 1.5 && input.priceChangePercent < 0) upsideProbability -= 3;
+  
+  // 7. MACD momentum (max ±5)
+  if (input.macd !== undefined && input.macdSignal !== undefined) {
+    if (input.macd > input.macdSignal && input.macd > 0) upsideProbability += 5;
+    else if (input.macd > input.macdSignal) upsideProbability += 3;
+    else if (input.macd < input.macdSignal && input.macd < 0) upsideProbability -= 5;
+    else upsideProbability -= 2;
+  }
 
   upsideProbability = Math.max(15, Math.min(85, upsideProbability));
 
-  // Downside Risk
-  const downsideRisk = Math.min(30, maxDrawdown * 0.6 + volatility * 0.3);
+  // ========== RỦI RO ĐIỀU CHỈNH (5-40%) ==========
+  // Công thức mới: kết hợp volatility, drawdown, và các yếu tố kỹ thuật
+  let downsideRisk = 15; // Base risk
+  
+  // Volatility contribution (0-15)
+  downsideRisk += Math.min(15, volatility * 0.4);
+  
+  // Max Drawdown contribution (0-10)
+  downsideRisk += Math.min(10, maxDrawdown * 0.3);
+  
+  // Technical risk factors
+  if (input.rsi14 > 70) downsideRisk += 5; // Overbought risk
+  if (input.pricePosition > 80) downsideRisk += 5; // Near 52w high risk
+  if (input.currentPrice < input.ma200) downsideRisk += 3; // Below long-term trend
+  if (input.ma20 < input.ma50) downsideRisk += 2; // Short-term downtrend
+  
+  // Reduce risk if fundamentals are strong
+  if (input.pe > 0 && input.pe < 12 && input.roe > 15) downsideRisk -= 3;
+  
+  downsideRisk = Math.max(5, Math.min(40, downsideRisk));
 
-  // Optimal Holding Days
+  // ========== THỜI GIAN NẮM GIỮ TỐI ƯU ==========
+  // Dựa trên volatility và xu hướng
   let optimalHoldingDays: number;
-  if (volatility > 45) optimalHoldingDays = 5;
-  else if (volatility > 35) optimalHoldingDays = 10;
-  else if (volatility > 25) optimalHoldingDays = 20;
-  else if (volatility > 15) optimalHoldingDays = 40;
-  else optimalHoldingDays = 60;
+  const isUptrend = input.currentPrice > input.ma50 && input.ma20 > input.ma50;
+  const isDowntrend = input.currentPrice < input.ma50 && input.ma20 < input.ma50;
+  
+  if (volatility > 40) {
+    optimalHoldingDays = isUptrend ? 7 : 3; // High vol: trade ngắn
+  } else if (volatility > 30) {
+    optimalHoldingDays = isUptrend ? 14 : 7;
+  } else if (volatility > 20) {
+    optimalHoldingDays = isUptrend ? 30 : 14;
+  } else if (volatility > 12) {
+    optimalHoldingDays = isUptrend ? 60 : 30;
+  } else {
+    optimalHoldingDays = isUptrend ? 90 : 45; // Low vol: có thể giữ dài
+  }
+  
+  // Điều chỉnh nếu đang downtrend
+  if (isDowntrend) optimalHoldingDays = Math.min(optimalHoldingDays, 10);
 
-  // Beta
-  const marketVolatility = 25;
-  let beta = 1 + (volatility - marketVolatility) / 50;
-  beta = Math.max(0.3, Math.min(2.5, beta));
+  // ========== BETA ==========
+  // Ưu tiên beta từ Simplize, nếu không có thì tính từ volatility
+  let calculatedBeta: number;
+  if (beta && beta > 0) {
+    calculatedBeta = beta;
+  } else {
+    const marketVolatility = 22; // VN-Index avg volatility
+    calculatedBeta = 1 + (volatility - marketVolatility) / 40;
+    calculatedBeta = Math.max(0.3, Math.min(2.5, calculatedBeta));
+  }
 
   return {
     optimalHoldingDays,
     upsideProbability: Math.round(upsideProbability),
     downsideRisk: Math.round(downsideRisk * 10) / 10,
     volatility: Math.round(volatility * 10) / 10,
-    beta: Math.round(beta * 100) / 100
+    beta: Math.round(calculatedBeta * 100) / 100
   };
 }
 

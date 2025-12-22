@@ -9,7 +9,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const headers = {
   "apikey": SUPABASE_ANON_KEY,
   "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-  "Content-Type": "application/json"
+  "Content-Type": "application/json",
+  "Cache-Control": "no-cache, no-store, must-revalidate",
+  "Pragma": "no-cache"
 };
 
 // Types
@@ -134,16 +136,27 @@ export interface TradingStrategy {
   analysis_date: string;
   buy_zone_low: number;
   buy_zone_high: number;
+  buy_zone_optimal?: number;
+  buy_zone_strength?: 'WEAK' | 'MODERATE' | 'STRONG';
   stop_loss: number;
+  stop_loss_percent?: number;
+  stop_loss_type?: string;
   target_1: number;
+  target_1_percent?: number;
+  target_1_rr?: number;
   target_2: number;
+  target_2_percent?: number;
+  target_2_rr?: number;
   target_3: number;
+  target_3_percent?: number;
+  target_3_rr?: number;
   support_1: number;
   support_2: number;
   resistance_1: number;
   resistance_2: number;
   strategy_type: string;
   strategy_note: string;
+  confidence?: number;
   created_at: string;
   updated_at: string;
 }
@@ -286,7 +299,11 @@ export interface SimplizeCompanyData {
 async function fetchFromSupabase<T>(endpoint: string, params: string = ""): Promise<T[]> {
   try {
     const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
-    const response = await fetch(url, { headers });
+    
+    const response = await fetch(url, { 
+      headers,
+      cache: 'no-store' // Force no caching
+    });
     
     if (!response.ok) {
       throw new Error(`Supabase error: ${response.status}`);
@@ -606,6 +623,97 @@ export async function getStockAnalysisData(symbol: string): Promise<StockAnalysi
   };
 }
 
+// Get Top SENAI Scores for ticker - combines data from multiple sources
+export interface TopSenaiStock {
+  symbol: string;
+  senai_score: number;
+  signal: string;
+  current_price: number;
+  rating: number;
+  change_percent?: number;
+}
+
+export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiStock[]> {
+  try {
+    // Try to get from senai_diagnosis first
+    const senaiData = await fetchFromSupabase<{
+      symbol: string;
+      senai_score: number;
+      signal: string;
+      current_price: number;
+      rating: number;
+    }>(
+      "senai_diagnosis",
+      `select=symbol,senai_score,signal,current_price,rating&order=senai_score.desc&limit=${limit}`
+    );
+    
+    if (senaiData && senaiData.length > 0) {
+      return senaiData;
+    }
+    
+    // Fallback: Get from ai_analysis + simplize_company_data
+    const [aiData, simplizeData] = await Promise.all([
+      fetchFromSupabase<{
+        symbol: string;
+        score: number;
+        rating: number;
+        recommendation: string;
+      }>("ai_analysis", `select=symbol,score,rating,recommendation&order=score.desc&limit=${limit}`),
+      fetchFromSupabase<{
+        symbol: string;
+        current_price: number;
+      }>("simplize_company_data", `select=symbol,current_price`)
+    ]);
+    
+    if (aiData && aiData.length > 0) {
+      // Create price map
+      const priceMap = new Map<string, number>();
+      simplizeData?.forEach(s => priceMap.set(s.symbol, s.current_price));
+      
+      // Map signal from recommendation
+      const getSignal = (rec: string, score: number): string => {
+        if (score >= 80) return 'MUA MẠNH';
+        if (rec === 'MUA' || score >= 65) return 'MUA';
+        if (rec === 'THEO DÕI' || score >= 50) return 'THEO DÕI';
+        if (rec === 'NẮM GIỮ' || score >= 40) return 'NẮM GIỮ';
+        if (score >= 30) return 'THẬN TRỌNG';
+        return 'BÁN';
+      };
+      
+      return aiData.map(ai => ({
+        symbol: ai.symbol,
+        senai_score: ai.score || 0,
+        signal: getSignal(ai.recommendation, ai.score),
+        current_price: priceMap.get(ai.symbol) || 0,
+        rating: ai.rating || Math.ceil((ai.score || 0) / 20)
+      }));
+    }
+    
+    // Final fallback: Get from technical_indicators with RS score
+    const techData = await fetchFromSupabase<{
+      symbol: string;
+      rs_rating: number;
+      current_price: number;
+      rsi_14: number;
+    }>("technical_indicators", `select=symbol,rs_rating,current_price,rsi_14&order=rs_rating.desc&limit=${limit}`);
+    
+    if (techData && techData.length > 0) {
+      return techData.map(t => ({
+        symbol: t.symbol,
+        senai_score: t.rs_rating || 50,
+        signal: t.rs_rating >= 80 ? 'MUA MẠNH' : t.rs_rating >= 60 ? 'MUA' : t.rs_rating >= 40 ? 'THEO DÕI' : 'NẮM GIỮ',
+        current_price: t.current_price || 0,
+        rating: Math.ceil((t.rs_rating || 50) / 20)
+      }));
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('Error fetching top SENAI stocks:', error);
+    return [];
+  }
+}
+
 export default {
   getCompanies,
   getVN100Companies,
@@ -639,5 +747,6 @@ export default {
   getOverboughtStocks,
   getGoldenCrossStocks,
   getSimplizeCompanyData,
-  getAllSimplizeCompanyData
+  getAllSimplizeCompanyData,
+  getTopSenaiStocks
 };

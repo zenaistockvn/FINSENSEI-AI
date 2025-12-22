@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   XAxis,
   YAxis,
@@ -38,6 +38,12 @@ import {
   Share2,
   Search,
   Sparkles,
+  Star,
+  RefreshCw,
+  Maximize2,
+  Info,
+  ChevronUp,
+  Bell,
 } from 'lucide-react';
 import {
   getVN100Companies,
@@ -51,6 +57,7 @@ import {
   getBrokerRecommendations,
   getSimplizeCompanyData,
   getTechnicalIndicators,
+  getTopSenaiStocks,
   Company,
   StockPrice,
   StockNews,
@@ -59,12 +66,14 @@ import {
   TradingStrategy,
   BrokerRecommendation,
   SimplizeCompanyData,
+  TopSenaiStock,
 } from '../services/supabaseClient';
 import AIStockInsight from './AIStockInsight';
 import TradingViewChart from './TradingViewChart';
 import LightweightChart from './LightweightChart';
 import { analyzeStockWithGPT, AISignal } from '../services/gptSignalService';
 import { getSimplizePrice } from '../services/simplizePriceService';
+import { getChartData } from '../services/vciService';
 import {
   calculateSenAIDiagnosis,
   calculateSenAIRisk,
@@ -514,17 +523,7 @@ const AIEarningsInsight = ({ isDark, stockInfo }: { isDark: boolean; stockInfo: 
 };
 
 const StockNewsFeed = ({ data, stockSymbol }: { data: NewsItem[]; stockSymbol: string }) => {
-  const [filter, setFilter] = useState<'all' | 'positive' | 'neutral' | 'negative'>('all');
-  
-  const filteredData = data.filter(item => filter === 'all' || item.sentiment === filter);
-  
-  const sentimentCounts = {
-    all: data.length,
-    positive: data.filter(n => n.sentiment === 'positive').length,
-    neutral: data.filter(n => n.sentiment === 'neutral').length,
-    negative: data.filter(n => n.sentiment === 'negative').length
-  };
-
+  // Temporarily show maintenance message
   return (
     <div className="h-full flex flex-col animate-fade-in-up">
       {/* Header */}
@@ -540,167 +539,28 @@ const StockNewsFeed = ({ data, stockSymbol }: { data: NewsItem[]; stockSymbol: s
                 {stockSymbol}
               </span>
             </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-xs">{data.length} tin tức gần đây</p>
-          </div>
-        </div>
-        
-        {/* Sentiment Summary */}
-        <div className="hidden md:flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.positive}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-slate-400"></div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.neutral}</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-            <span className="text-xs text-slate-600 dark:text-slate-400">{sentimentCounts.negative}</span>
+            <p className="text-slate-500 dark:text-slate-400 text-xs">Đang cập nhật nguồn tin</p>
           </div>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-1 mb-4 p-1 bg-slate-100 dark:bg-slate-800/50 rounded-lg">
-        {[
-          { id: 'all', label: 'Tất cả', count: sentimentCounts.all },
-          { id: 'positive', label: 'Tích cực', count: sentimentCounts.positive, color: 'emerald' },
-          { id: 'neutral', label: 'Trung lập', count: sentimentCounts.neutral, color: 'slate' },
-          { id: 'negative', label: 'Tiêu cực', count: sentimentCounts.negative, color: 'rose' }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setFilter(tab.id as any)}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-md text-xs font-medium transition-all ${
-              filter === tab.id
-                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            <span>{tab.label}</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-              filter === tab.id 
-                ? tab.color === 'emerald' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' 
-                : tab.color === 'rose' ? 'bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400'
-                : 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-300'
-                : 'bg-slate-200 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
-            }`}>
-              {tab.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* News List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-3">
-        {filteredData.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-              <Newspaper size={28} className="text-slate-400" />
-            </div>
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Chưa có tin tức</p>
-            <p className="text-xs text-slate-500">Không tìm thấy tin tức cho mã {stockSymbol}</p>
-          </div>
-        ) : (
-          filteredData.map((item, index) => (
-            <div 
-              key={item.id} 
-              className="bg-white dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-white/5 hover:border-blue-300 dark:hover:border-blue-500/30 transition-all group overflow-hidden"
-            >
-              {/* News Header */}
-              <div className="p-4 pb-3">
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide ${
-                      item.sentiment === 'positive' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
-                      item.sentiment === 'negative' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
-                      'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-                    }`}>
-                      {item.sentiment === 'positive' ? '↑ Tích cực' : item.sentiment === 'negative' ? '↓ Tiêu cực' : '• Trung lập'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.source}</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">•</span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.time}</span>
-                  </div>
-                  {item.url && (
-                    <a 
-                      href={item.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-                      title="Xem bài gốc"
-                    >
-                      <Share2 size={14} />
-                    </a>
-                  )}
-                </div>
-                
-                {/* Title */}
-                {item.url ? (
-                  <a 
-                    href={item.url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
-                      {item.title}
-                    </h4>
-                  </a>
-                ) : (
-                  <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-snug line-clamp-2">
-                    {item.title}
-                  </h4>
-                )}
-              </div>
-              
-              {/* AI Summary */}
-              <div className={`mx-4 mb-4 p-3 rounded-lg border ${
-                item.sentiment === 'positive' ? 'bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-100 dark:border-emerald-500/10' :
-                item.sentiment === 'negative' ? 'bg-rose-50/50 dark:bg-rose-500/5 border-rose-100 dark:border-rose-500/10' :
-                'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-700/50'
-              }`}>
-                <div className="flex items-start gap-2">
-                  <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
-                    item.sentiment === 'positive' ? 'bg-emerald-100 dark:bg-emerald-500/20' :
-                    item.sentiment === 'negative' ? 'bg-rose-100 dark:bg-rose-500/20' :
-                    'bg-slate-200 dark:bg-slate-700'
-                  }`}>
-                    <BrainCircuit size={12} className={`${
-                      item.sentiment === 'positive' ? 'text-emerald-600 dark:text-emerald-400' :
-                      item.sentiment === 'negative' ? 'text-rose-600 dark:text-rose-400' : 
-                      'text-slate-500 dark:text-slate-400'
-                    }`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Tóm tắt AI</span>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-0.5">
-                      {item.aiSummary}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Footer */}
-      {data.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-white/5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Clock size={12} />
-              <span>Cập nhật liên tục</span>
-            </div>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
-              <Globe size={12} />
-              Xem tất cả tin tức
-            </button>
-          </div>
+      {/* Maintenance Message */}
+      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-500/20 dark:to-orange-500/20 flex items-center justify-center mb-6">
+          <svg className="w-10 h-10 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
         </div>
-      )}
+        <h4 className="text-lg font-bold text-slate-800 dark:text-white mb-2">Đang bảo trì</h4>
+        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
+          Tính năng tin tức đang được nâng cấp để mang đến trải nghiệm tốt hơn. Vui lòng quay lại sau!
+        </p>
+        <div className="mt-6 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-4 py-2 rounded-full">
+          <Clock size={14} />
+          <span>Sẽ sớm hoạt động trở lại</span>
+        </div>
+      </div>
     </div>
   );
 };
@@ -835,6 +695,672 @@ const SenAIGauge = ({ value, label, color, isDark }: { value: number; label: str
   );
 };
 
+// Mini Sparkline Chart Component (Bloomberg style)
+const MiniSparkline = ({ data, color = '#10b981', width = 60, height = 24 }: { 
+  data: number[]; 
+  color?: string; 
+  width?: number; 
+  height?: number;
+}) => {
+  if (!data || data.length < 2) return null;
+  
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  
+  const points = data.map((value, index) => {
+    const x = (index / (data.length - 1)) * width;
+    const y = height - ((value - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+  
+  const isUp = data[data.length - 1] >= data[0];
+  const lineColor = color === 'auto' ? (isUp ? '#10b981' : '#ef4444') : color;
+  
+  // Create gradient area
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+  
+  return (
+    <svg width={width} height={height} className="overflow-visible">
+      <defs>
+        <linearGradient id={`sparkGradient-${lineColor}`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor={lineColor} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon 
+        points={areaPoints} 
+        fill={`url(#sparkGradient-${lineColor})`}
+      />
+      <polyline
+        points={points}
+        fill="none"
+        stroke={lineColor}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx={width}
+        cy={height - ((data[data.length - 1] - min) / range) * height}
+        r="2"
+        fill={lineColor}
+        className="animate-pulse"
+      />
+    </svg>
+  );
+};
+
+// Gradient Score Ring Component
+const GradientScoreRing = ({ 
+  score, 
+  maxScore = 100, 
+  size = 56, 
+  strokeWidth = 4,
+  label,
+  showLabel = true
+}: { 
+  score: number; 
+  maxScore?: number; 
+  size?: number; 
+  strokeWidth?: number;
+  label?: string;
+  showLabel?: boolean;
+}) => {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.min(score / maxScore, 1);
+  const strokeDashoffset = circumference * (1 - progress);
+  
+  // Color based on score
+  const getColor = () => {
+    if (score >= 80) return { start: '#10b981', end: '#059669' }; // Green
+    if (score >= 60) return { start: '#22d3ee', end: '#0891b2' }; // Cyan
+    if (score >= 40) return { start: '#f59e0b', end: '#d97706' }; // Amber
+    return { start: '#ef4444', end: '#dc2626' }; // Red
+  };
+  
+  const colors = getColor();
+  // Create unique gradient ID using random suffix
+  const gradientId = `scoreGradient-${Math.round(score)}-${label?.replace(/\s/g, '')}-${Math.random().toString(36).substr(2, 5)}`;
+  
+  return (
+    <div className="flex flex-col items-center gap-1 flex-shrink-0">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="transform -rotate-90">
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={colors.start} />
+              <stop offset="100%" stopColor={colors.end} />
+            </linearGradient>
+          </defs>
+          {/* Background circle */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            className="text-slate-200 dark:text-slate-700"
+          />
+          {/* Progress circle */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={`url(#${gradientId})`}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        {/* Center text */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-sm font-bold text-slate-900 dark:text-white">{Math.round(score)}</span>
+        </div>
+      </div>
+      {showLabel && label && (
+        <span className="text-[9px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center whitespace-nowrap">{label}</span>
+      )}
+    </div>
+  );
+};
+
+// AI Confidence Meter Component - Gauge with needle
+const AIConfidenceMeter = ({ 
+  confidence, 
+  label = "Độ tin cậy AI",
+  size = 120 
+}: { 
+  confidence: number; 
+  label?: string;
+  size?: number;
+}) => {
+  // Clamp confidence between 0-100
+  const value = Math.max(0, Math.min(100, confidence));
+  // Convert to angle (-135 to 135 degrees, total 270 degrees)
+  const angle = -135 + (value / 100) * 270;
+  
+  const getConfidenceLevel = () => {
+    if (value >= 80) return { text: 'Rất cao', color: '#10b981' };
+    if (value >= 60) return { text: 'Cao', color: '#22d3ee' };
+    if (value >= 40) return { text: 'Trung bình', color: '#f59e0b' };
+    if (value >= 20) return { text: 'Thấp', color: '#f97316' };
+    return { text: 'Rất thấp', color: '#ef4444' };
+  };
+  
+  const level = getConfidenceLevel();
+  const centerX = size / 2;
+  const centerY = size / 2 + 10;
+  const radius = size / 2 - 15;
+  
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: size, height: size * 0.7 }}>
+        <svg width={size} height={size * 0.7} viewBox={`0 0 ${size} ${size * 0.7}`}>
+          <defs>
+            {/* Gradient for the arc */}
+            <linearGradient id="meterGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ef4444" />
+              <stop offset="25%" stopColor="#f97316" />
+              <stop offset="50%" stopColor="#f59e0b" />
+              <stop offset="75%" stopColor="#22d3ee" />
+              <stop offset="100%" stopColor="#10b981" />
+            </linearGradient>
+            {/* Glow filter */}
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          
+          {/* Background arc */}
+          <path
+            d={`M ${centerX - radius * Math.cos(Math.PI * 0.75)} ${centerY - radius * Math.sin(Math.PI * 0.75)} 
+                A ${radius} ${radius} 0 1 1 ${centerX + radius * Math.cos(Math.PI * 0.75)} ${centerY - radius * Math.sin(Math.PI * 0.75)}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            strokeLinecap="round"
+            className="text-slate-200 dark:text-slate-700"
+          />
+          
+          {/* Colored arc */}
+          <path
+            d={`M ${centerX - radius * Math.cos(Math.PI * 0.75)} ${centerY - radius * Math.sin(Math.PI * 0.75)} 
+                A ${radius} ${radius} 0 1 1 ${centerX + radius * Math.cos(Math.PI * 0.75)} ${centerY - radius * Math.sin(Math.PI * 0.75)}`}
+            fill="none"
+            stroke="url(#meterGradient)"
+            strokeWidth="8"
+            strokeLinecap="round"
+            opacity="0.3"
+          />
+          
+          {/* Tick marks */}
+          {[0, 25, 50, 75, 100].map((tick) => {
+            const tickAngle = (-135 + (tick / 100) * 270) * (Math.PI / 180);
+            const innerR = radius - 12;
+            const outerR = radius - 6;
+            return (
+              <line
+                key={tick}
+                x1={centerX + innerR * Math.cos(tickAngle)}
+                y1={centerY + innerR * Math.sin(tickAngle)}
+                x2={centerX + outerR * Math.cos(tickAngle)}
+                y2={centerY + outerR * Math.sin(tickAngle)}
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-slate-400 dark:text-slate-500"
+              />
+            );
+          })}
+          
+          {/* Needle */}
+          <g transform={`rotate(${angle}, ${centerX}, ${centerY})`} filter="url(#glow)">
+            <polygon
+              points={`${centerX},${centerY - radius + 20} ${centerX - 4},${centerY} ${centerX + 4},${centerY}`}
+              fill={level.color}
+            />
+            <circle cx={centerX} cy={centerY} r="6" fill={level.color} />
+            <circle cx={centerX} cy={centerY} r="3" fill="white" />
+          </g>
+        </svg>
+        
+        {/* Center value */}
+        <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 text-center">
+          <span className="text-2xl font-bold" style={{ color: level.color }}>{Math.round(value)}%</span>
+        </div>
+      </div>
+      
+      {/* Label and level */}
+      <div className="text-center mt-1">
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</span>
+        <div className="flex items-center justify-center gap-1 mt-0.5">
+          <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: level.color }}></span>
+          <span className="text-xs font-bold" style={{ color: level.color }}>{level.text}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sector Heatmap Mini Component
+const SectorHeatmapMini = ({ currentSector }: { currentSector?: string }) => {
+  // Vietnam market sectors with mock performance data
+  const sectors = [
+    { name: 'Ngân hàng', code: 'BANK', change: 1.2, volume: 85 },
+    { name: 'Bất động sản', code: 'BDS', change: -0.8, volume: 72 },
+    { name: 'Chứng khoán', code: 'CK', change: 2.5, volume: 90 },
+    { name: 'Thép', code: 'STEEL', change: 0.5, volume: 65 },
+    { name: 'Dầu khí', code: 'OIL', change: -1.2, volume: 55 },
+    { name: 'Công nghệ', code: 'TECH', change: 1.8, volume: 78 },
+    { name: 'Bán lẻ', code: 'RETAIL', change: 0.3, volume: 60 },
+    { name: 'Thực phẩm', code: 'FOOD', change: -0.2, volume: 45 },
+    { name: 'Điện', code: 'POWER', change: 0.8, volume: 50 },
+    { name: 'Xây dựng', code: 'BUILD', change: -0.5, volume: 40 },
+    { name: 'Vận tải', code: 'TRANS', change: 1.5, volume: 55 },
+    { name: 'Hóa chất', code: 'CHEM', change: 0.2, volume: 35 },
+  ];
+  
+  const getHeatColor = (change: number) => {
+    if (change >= 2) return 'bg-emerald-500';
+    if (change >= 1) return 'bg-emerald-400';
+    if (change >= 0.5) return 'bg-emerald-300';
+    if (change > 0) return 'bg-emerald-200';
+    if (change === 0) return 'bg-slate-300 dark:bg-slate-600';
+    if (change > -0.5) return 'bg-rose-200';
+    if (change > -1) return 'bg-rose-300';
+    if (change > -2) return 'bg-rose-400';
+    return 'bg-rose-500';
+  };
+  
+  const getTextColor = (change: number) => {
+    if (Math.abs(change) >= 1) return 'text-white';
+    return 'text-slate-700 dark:text-slate-200';
+  };
+  
+  return (
+    <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <Layers size={14} className="text-white" />
+          </div>
+          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Bản đồ ngành</span>
+        </div>
+        <div className="flex items-center gap-1 text-[9px] text-slate-400">
+          <span className="w-2 h-2 rounded-sm bg-emerald-500"></span>
+          <span>Tăng</span>
+          <span className="w-2 h-2 rounded-sm bg-rose-500 ml-1"></span>
+          <span>Giảm</span>
+        </div>
+      </div>
+      
+      {/* Heatmap Grid */}
+      <div className="grid grid-cols-4 gap-1">
+        {sectors.map((sector) => {
+          const isCurrentSector = currentSector?.toLowerCase().includes(sector.name.toLowerCase());
+          return (
+            <div
+              key={sector.code}
+              className={`relative p-1.5 rounded-md cursor-pointer transition-all hover:scale-105 ${getHeatColor(sector.change)} ${
+                isCurrentSector ? 'ring-2 ring-indigo-500 ring-offset-1' : ''
+              }`}
+              title={`${sector.name}: ${sector.change >= 0 ? '+' : ''}${sector.change.toFixed(1)}%`}
+            >
+              <div className={`text-[8px] font-bold truncate ${getTextColor(sector.change)}`}>
+                {sector.code}
+              </div>
+              <div className={`text-[9px] font-medium ${getTextColor(sector.change)}`}>
+                {sector.change >= 0 ? '+' : ''}{sector.change.toFixed(1)}%
+              </div>
+              {/* Volume indicator */}
+              <div className="absolute bottom-0.5 right-0.5 w-1 h-1 rounded-full bg-white/50" 
+                   style={{ opacity: sector.volume / 100 }}></div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Legend */}
+      <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[9px] text-slate-500">
+        <span>Cập nhật: {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+        <span className="flex items-center gap-1">
+          <Activity size={10} />
+          12 ngành
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// Professional Empty State Components
+const EmptyState = ({ 
+  type = 'default',
+  title,
+  description,
+  action,
+  onAction
+}: { 
+  type?: 'chart' | 'data' | 'search' | 'error' | 'loading' | 'default';
+  title?: string;
+  description?: string;
+  action?: string;
+  onAction?: () => void;
+}) => {
+  const configs = {
+    chart: {
+      icon: (
+        <svg className="w-16 h-16 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+          <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M7 16l4-4 4 4 5-6" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="7" cy="16" r="1.5" fill="currentColor"/>
+          <circle cx="11" cy="12" r="1.5" fill="currentColor"/>
+          <circle cx="15" cy="16" r="1.5" fill="currentColor"/>
+          <circle cx="20" cy="10" r="1.5" fill="currentColor"/>
+        </svg>
+      ),
+      defaultTitle: 'Chưa có dữ liệu biểu đồ',
+      defaultDesc: 'Dữ liệu giá chưa được tải hoặc không có sẵn cho mã này',
+      gradient: 'from-blue-500/10 to-indigo-500/10'
+    },
+    data: {
+      icon: (
+        <svg className="w-16 h-16 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M3 9h18M9 21V9"/>
+          <circle cx="15" cy="15" r="2" strokeDasharray="2 2"/>
+        </svg>
+      ),
+      defaultTitle: 'Không có dữ liệu',
+      defaultDesc: 'Thông tin chưa được cập nhật cho cổ phiếu này',
+      gradient: 'from-purple-500/10 to-pink-500/10'
+    },
+    search: {
+      icon: (
+        <svg className="w-16 h-16 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="M21 21l-4.35-4.35"/>
+          <path d="M11 8v6M8 11h6" strokeLinecap="round"/>
+        </svg>
+      ),
+      defaultTitle: 'Không tìm thấy kết quả',
+      defaultDesc: 'Thử tìm kiếm với từ khóa khác hoặc kiểm tra lại mã cổ phiếu',
+      gradient: 'from-amber-500/10 to-orange-500/10'
+    },
+    error: {
+      icon: (
+        <svg className="w-16 h-16 text-rose-300 dark:text-rose-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 8v4M12 16h.01" strokeLinecap="round"/>
+        </svg>
+      ),
+      defaultTitle: 'Đã xảy ra lỗi',
+      defaultDesc: 'Không thể tải dữ liệu. Vui lòng thử lại sau',
+      gradient: 'from-rose-500/10 to-red-500/10'
+    },
+    loading: {
+      icon: (
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-slate-200 dark:border-slate-700"></div>
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-indigo-500 animate-spin"></div>
+          <div className="absolute inset-3 rounded-full border-4 border-transparent border-t-purple-500 animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+        </div>
+      ),
+      defaultTitle: 'Đang tải dữ liệu',
+      defaultDesc: 'Vui lòng đợi trong giây lát...',
+      gradient: 'from-indigo-500/10 to-purple-500/10'
+    },
+    default: {
+      icon: (
+        <svg className="w-16 h-16 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M12 8v8M8 12h8" strokeLinecap="round" strokeDasharray="2 2"/>
+        </svg>
+      ),
+      defaultTitle: 'Không có nội dung',
+      defaultDesc: 'Nội dung sẽ được hiển thị khi có dữ liệu',
+      gradient: 'from-slate-500/10 to-slate-600/10'
+    }
+  };
+  
+  const config = configs[type];
+  
+  return (
+    <div className={`flex flex-col items-center justify-center py-12 px-6 text-center bg-gradient-to-br ${config.gradient} rounded-2xl border border-dashed border-slate-300 dark:border-slate-700`}>
+      {/* Animated background circles */}
+      <div className="relative mb-6">
+        <div className="absolute inset-0 -m-4 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 animate-pulse"></div>
+        <div className="relative z-10">
+          {config.icon}
+        </div>
+      </div>
+      
+      {/* Title */}
+      <h4 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-2">
+        {title || config.defaultTitle}
+      </h4>
+      
+      {/* Description */}
+      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed mb-4">
+        {description || config.defaultDesc}
+      </p>
+      
+      {/* Action button */}
+      {action && onAction && (
+        <button
+          onClick={onAction}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg transition-all hover:scale-105 shadow-lg shadow-indigo-500/25"
+        >
+          <RefreshCw size={14} />
+          {action}
+        </button>
+      )}
+      
+      {/* Decorative elements */}
+      <div className="absolute top-4 right-4 w-20 h-20 bg-gradient-to-br from-indigo-500/5 to-purple-500/5 rounded-full blur-2xl"></div>
+      <div className="absolute bottom-4 left-4 w-16 h-16 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-full blur-2xl"></div>
+    </div>
+  );
+};
+
+// Compact Empty State for smaller areas
+const EmptyStateCompact = ({ 
+  message = 'Không có dữ liệu',
+  icon: Icon = Activity
+}: { 
+  message?: string;
+  icon?: any;
+}) => (
+  <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
+    <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-2">
+      <Icon size={20} className="text-slate-400" />
+    </div>
+    <span className="text-xs text-slate-500 dark:text-slate-400">{message}</span>
+  </div>
+);
+
+// Inline Empty State for list items
+const EmptyStateInline = ({ message = 'N/A' }: { message?: string }) => (
+  <span className="text-slate-400 dark:text-slate-500 italic text-sm">{message}</span>
+);
+
+// Top SENAI Price Ticker Component (Real-time scrolling)
+const TopSenaiTicker = ({ isDark }: { isDark: boolean }) => {
+  const [tickerData, setTickerData] = useState<Array<{
+    symbol: string;
+    price: number;
+    senaiScore: number;
+    signal: string;
+    rating: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<string>('');
+  
+  useEffect(() => {
+    const fetchTopSenai = async () => {
+      try {
+        const data = await getTopSenaiStocks(10);
+        if (data && data.length > 0) {
+          // Filter out stocks with 0 price or 0 score
+          const validData = data.filter(s => s.current_price > 0 || s.senai_score > 0);
+          if (validData.length > 0) {
+            setTickerData(validData.map(stock => ({
+              symbol: stock.symbol,
+              price: stock.current_price || 0,
+              senaiScore: stock.senai_score || 0,
+              signal: stock.signal || 'THEO DÕI',
+              rating: stock.rating || Math.ceil((stock.senai_score || 50) / 20)
+            })));
+            setDataSource('database');
+          } else {
+            setFallbackData();
+          }
+        } else {
+          setFallbackData();
+        }
+      } catch (error) {
+        console.error('Error fetching top SENAI stocks:', error);
+        setFallbackData();
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    const setFallbackData = () => {
+      // Fallback data if no data available
+      setTickerData([
+        { symbol: 'FPT', price: 125000, senaiScore: 85, signal: 'MUA MẠNH', rating: 5 },
+        { symbol: 'VNM', price: 72500, senaiScore: 78, signal: 'MUA', rating: 4 },
+        { symbol: 'VCB', price: 92300, senaiScore: 75, signal: 'MUA', rating: 4 },
+        { symbol: 'HPG', price: 25800, senaiScore: 72, signal: 'THEO DÕI', rating: 4 },
+        { symbol: 'MSN', price: 78200, senaiScore: 70, signal: 'THEO DÕI', rating: 4 },
+        { symbol: 'MWG', price: 52300, senaiScore: 68, signal: 'THEO DÕI', rating: 3 },
+        { symbol: 'TCB', price: 24500, senaiScore: 65, signal: 'NẮM GIỮ', rating: 3 },
+        { symbol: 'VIC', price: 42100, senaiScore: 62, signal: 'NẮM GIỮ', rating: 3 },
+        { symbol: 'VHM', price: 44500, senaiScore: 58, signal: 'THẬN TRỌNG', rating: 3 },
+        { symbol: 'VPB', price: 19800, senaiScore: 55, signal: 'THẬN TRỌNG', rating: 3 },
+      ]);
+      setDataSource('fallback');
+    };
+    
+    fetchTopSenai();
+    
+    // Refresh every hour
+    const interval = setInterval(fetchTopSenai, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Get signal color
+  const getSignalColor = (signal: string) => {
+    switch (signal) {
+      case 'MUA MẠNH': return 'text-emerald-400 bg-emerald-500/20';
+      case 'MUA': return 'text-green-400 bg-green-500/20';
+      case 'THEO DÕI': return 'text-cyan-400 bg-cyan-500/20';
+      case 'NẮM GIỮ': return 'text-amber-400 bg-amber-500/20';
+      case 'THẬN TRỌNG': return 'text-orange-400 bg-orange-500/20';
+      case 'BÁN': return 'text-rose-400 bg-rose-500/20';
+      default: return 'text-slate-400 bg-slate-500/20';
+    }
+  };
+  
+  // Get score color
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-emerald-400';
+    if (score >= 60) return 'text-cyan-400';
+    if (score >= 40) return 'text-amber-400';
+    return 'text-rose-400';
+  };
+  
+  if (loading) {
+    return (
+      <div className="w-full overflow-hidden bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
+        <div className="flex items-center justify-center py-2">
+          <div className="animate-spin w-4 h-4 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full mr-2"></div>
+          <span className="text-xs text-slate-400">Đang tải Top SENAI...</span>
+        </div>
+      </div>
+    );
+  }
+  
+  if (tickerData.length === 0) return null;
+  
+  // Duplicate for seamless loop
+  const duplicatedData = [...tickerData, ...tickerData];
+  const originalLength = tickerData.length;
+  
+  return (
+    <div className="w-full overflow-hidden bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900 dark:from-slate-950 dark:via-slate-950/95 dark:to-slate-950 backdrop-blur-sm border-b border-slate-800">
+      {/* Header label */}
+      <div className="flex items-center">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
+          <Sparkles size={12} className="animate-pulse" />
+          TOP SENAI
+          {dataSource === 'database' && (
+            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" title="Live data"></span>
+          )}
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <div className="flex animate-ticker">
+            {duplicatedData.map((stock, index) => {
+              const originalIndex = index % originalLength;
+              return (
+                <div 
+                  key={`${stock.symbol}-${index}`}
+                  className="flex items-center gap-2 px-4 py-1.5 border-r border-slate-800/50 whitespace-nowrap hover:bg-slate-800/50 transition-colors cursor-pointer"
+                >
+                  {/* Rank badge for top 3 - only show for first set */}
+                  {originalIndex < 3 && index < originalLength && (
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      originalIndex === 0 ? 'bg-amber-500 text-amber-900' :
+                      originalIndex === 1 ? 'bg-slate-400 text-slate-900' :
+                      'bg-amber-700 text-amber-100'
+                    }`}>
+                      {originalIndex + 1}
+                    </span>
+                  )}
+                  <span className="text-xs font-bold text-white">{stock.symbol}</span>
+                  {stock.price > 0 && (
+                    <span className="text-xs text-slate-400 tabular-nums">
+                      {stock.price.toLocaleString()}
+                    </span>
+                  )}
+                  {/* SENAI Score */}
+                  <span className={`text-xs font-bold tabular-nums ${getScoreColor(stock.senaiScore)}`}>
+                    {stock.senaiScore}
+                  </span>
+                  {/* Signal badge */}
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${getSignalColor(stock.signal)}`}>
+                    {stock.signal}
+                  </span>
+                  {/* Rating stars */}
+                  <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <div 
+                        key={star} 
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          star <= stock.rating ? 'bg-amber-400' : 'bg-slate-700'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MetricCard = ({ label, value, sub, icon: Icon }: { label: string; value: string; sub?: string; icon?: any }) => (
   <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5 flex items-center justify-between group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
     <div>
@@ -848,6 +1374,188 @@ const MetricCard = ({ label, value, sub, icon: Icon }: { label: string; value: s
   </div>
 );
 
+// Animated Metric Card with dynamic icons for Technical Indicators
+const AnimatedMetricCard = ({ 
+  label, 
+  value, 
+  sub, 
+  status,
+  type 
+}: { 
+  label: string; 
+  value: string; 
+  sub?: string; 
+  status?: 'bullish' | 'bearish' | 'neutral' | 'strong' | 'weak';
+  type: 'rs' | 'rsi' | 'ma' | 'macd' | 'volatility' | 'change' | 'volume' | 'position';
+}) => {
+  // Dynamic icon based on type
+  const getIcon = () => {
+    switch (type) {
+      case 'rs':
+        return (
+          <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${
+            status === 'strong' ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/10' :
+            status === 'weak' ? 'bg-gradient-to-br from-rose-500/20 to-rose-600/10' :
+            'bg-gradient-to-br from-cyan-500/20 to-cyan-600/10'
+          }`}>
+            <TrendingUp size={18} className={`${
+              status === 'strong' ? 'text-emerald-500 animate-bounce' :
+              status === 'weak' ? 'text-rose-500' :
+              'text-cyan-500'
+            }`} />
+            {status === 'strong' && (
+              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+            )}
+          </div>
+        );
+      case 'rsi':
+        return (
+          <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${
+            status === 'bullish' ? 'bg-gradient-to-br from-rose-500/20 to-orange-500/10' :
+            status === 'bearish' ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10' :
+            'bg-gradient-to-br from-purple-500/20 to-purple-600/10'
+          }`}>
+            <Activity size={18} className={`${
+              status === 'bullish' ? 'text-rose-500 animate-pulse' :
+              status === 'bearish' ? 'text-emerald-500 animate-pulse' :
+              'text-purple-500'
+            }`} />
+            <div className={`absolute inset-0 rounded-xl ${
+              status === 'bullish' ? 'animate-ping bg-rose-500/10' :
+              status === 'bearish' ? 'animate-ping bg-emerald-500/10' : ''
+            }`} style={{ animationDuration: '2s' }}></div>
+          </div>
+        );
+      case 'ma':
+        return (
+          <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${
+            status === 'bullish' ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/10' :
+            status === 'bearish' ? 'bg-gradient-to-br from-rose-500/20 to-rose-600/10' :
+            'bg-gradient-to-br from-blue-500/20 to-blue-600/10'
+          }`}>
+            <svg className={`w-5 h-5 ${
+              status === 'bullish' ? 'text-emerald-500' :
+              status === 'bearish' ? 'text-rose-500' :
+              'text-blue-500'
+            }`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 17l6-6 4 4 8-8" className={status === 'bullish' ? 'animate-draw-line' : ''} />
+              <circle cx="21" cy="7" r="2" className={status === 'bullish' ? 'animate-pulse' : ''} />
+            </svg>
+          </div>
+        );
+      case 'macd':
+        return (
+          <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden ${
+            status === 'bullish' ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10' :
+            status === 'bearish' ? 'bg-gradient-to-br from-rose-500/20 to-pink-500/10' :
+            'bg-gradient-to-br from-indigo-500/20 to-indigo-600/10'
+          }`}>
+            <BarChart2 size={18} className={`${
+              status === 'bullish' ? 'text-emerald-500' :
+              status === 'bearish' ? 'text-rose-500' :
+              'text-indigo-500'
+            }`} />
+            <div className={`absolute bottom-0 left-0 right-0 h-1 ${
+              status === 'bullish' ? 'bg-emerald-500 animate-expand-width' :
+              status === 'bearish' ? 'bg-rose-500 animate-expand-width' :
+              'bg-indigo-500/50'
+            }`}></div>
+          </div>
+        );
+      case 'volatility':
+        return (
+          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/10 flex items-center justify-center">
+            <Zap size={18} className="text-amber-500 animate-pulse" />
+            <div className="absolute inset-0 rounded-xl border-2 border-amber-500/30 animate-ping" style={{ animationDuration: '3s' }}></div>
+          </div>
+        );
+      case 'change':
+        return (
+          <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${
+            status === 'bullish' ? 'bg-gradient-to-br from-emerald-500/20 to-emerald-600/10' :
+            status === 'bearish' ? 'bg-gradient-to-br from-rose-500/20 to-rose-600/10' :
+            'bg-gradient-to-br from-slate-500/20 to-slate-600/10'
+          }`}>
+            <TrendingUp size={18} className={`transition-transform ${
+              status === 'bullish' ? 'text-emerald-500 animate-bounce-subtle' :
+              status === 'bearish' ? 'text-rose-500 rotate-180' :
+              'text-slate-500'
+            }`} />
+          </div>
+        );
+      case 'volume':
+        return (
+          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/10 flex items-center justify-center overflow-hidden">
+            <BarChart2 size={18} className="text-blue-500" />
+            <div className="absolute bottom-0 left-1 right-1 flex items-end justify-around h-4 gap-0.5">
+              <div className="w-1 bg-blue-500/60 rounded-t animate-bar-1" style={{ height: '40%' }}></div>
+              <div className="w-1 bg-blue-500/60 rounded-t animate-bar-2" style={{ height: '70%' }}></div>
+              <div className="w-1 bg-blue-500/60 rounded-t animate-bar-3" style={{ height: '50%' }}></div>
+              <div className="w-1 bg-blue-500/60 rounded-t animate-bar-4" style={{ height: '90%' }}></div>
+            </div>
+          </div>
+        );
+      case 'position':
+        return (
+          <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/10 flex items-center justify-center">
+            <Target size={18} className="text-violet-500" />
+            <div className="absolute inset-2 rounded-full border-2 border-violet-500/30 animate-spin-slow"></div>
+          </div>
+        );
+      default:
+        return (
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500/20 to-slate-600/10 flex items-center justify-center">
+            <Activity size={18} className="text-slate-500" />
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-slate-800/30 rounded-xl p-3 border border-slate-200 dark:border-white/5 flex items-center justify-between group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all hover:scale-[1.02] hover:shadow-lg">
+      <div className="flex-1">
+        <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-0.5">{label}</p>
+        <div className="flex items-baseline gap-2">
+          <p className={`font-bold text-base tabular-nums ${
+            status === 'bullish' || status === 'strong' ? 'text-emerald-600 dark:text-emerald-400' :
+            status === 'bearish' || status === 'weak' ? 'text-rose-600 dark:text-rose-400' :
+            'text-slate-900 dark:text-white'
+          }`}>{value}</p>
+          {sub && (
+            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+              status === 'bullish' || status === 'strong' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' :
+              status === 'bearish' || status === 'weak' ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400' :
+              'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+            }`}>{sub}</span>
+          )}
+        </div>
+      </div>
+      {getIcon()}
+    </div>
+  );
+};
+
+// Mobile Metric Card for bottom sheet
+const MobileMetricCard = ({ label, value, color }: { label: string; value: string; color: string }) => {
+  const colorClasses: Record<string, string> = {
+    cyan: 'from-cyan-500/20 to-cyan-600/10 border-cyan-500/30 text-cyan-400',
+    purple: 'from-purple-500/20 to-purple-600/10 border-purple-500/30 text-purple-400',
+    blue: 'from-blue-500/20 to-blue-600/10 border-blue-500/30 text-blue-400',
+    emerald: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 text-emerald-400',
+    amber: 'from-amber-500/20 to-amber-600/10 border-amber-500/30 text-amber-400',
+    rose: 'from-rose-500/20 to-rose-600/10 border-rose-500/30 text-rose-400',
+  };
+  
+  return (
+    <div className={`bg-gradient-to-br ${colorClasses[color] || colorClasses.blue} rounded-xl p-3 border`}>
+      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider mb-1">{label}</p>
+      <p className={`font-bold text-lg ${colorClasses[color]?.split(' ').pop() || 'text-blue-400'}`}>{value}</p>
+    </div>
+  );
+};
 
 // --- AI Analysis Logic ---
 interface AIAlert {
@@ -1106,7 +1814,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [searchLoading, setSearchLoading] = useState(false);
   const [timeframe, setTimeframe] = useState('3M');
   const [viewMode, setViewMode] = useState<'chart' | 'earnings' | 'news'>('chart');
-  const [showAlerts, setShowAlerts] = useState(true);
+  const [showAlerts, setShowAlerts] = useState(false);
   const [showFinancialModal, setShowFinancialModal] = useState(false);
   const [chartMode, setChartMode] = useState<'advanced' | 'lite'>('advanced'); // Toggle chart mode
   const [newsFilter, setNewsFilter] = useState<
@@ -1120,6 +1828,15 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [newsData, setNewsData] = useState<NewsItem[]>([]);
   const [simplizeData, setSimplizeData] = useState<SimplizeCompanyData | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isAutoRefresh, setIsAutoRefresh] = useState(true);
+  
+  // New UI states
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showMobileIndicators, setShowMobileIndicators] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   // AI Analysis states
   const [aiAnalysis, setAIAnalysis] = useState<AIAnalysis | null>(null);
@@ -1129,6 +1846,45 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
   const [brokerRecommendations, setBrokerRecommendations] = useState<
     BrokerRecommendation[]
   >([]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if not in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      // Number keys for tabs
+      if (e.key === '1') setViewMode('chart');
+      if (e.key === '2') setViewMode('earnings');
+      if (e.key === '3') setViewMode('news');
+      
+      // R for refresh
+      if (e.key === 'r' && !e.ctrlKey && !e.metaKey) handleRefresh();
+      
+      // W for watchlist toggle
+      if (e.key === 'w') toggleWatchlist();
+      
+      // F for fullscreen
+      if (e.key === 'f' && !e.ctrlKey && !e.metaKey) setIsFullscreen(prev => !prev);
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setLastUpdate(new Date());
+    // Trigger re-fetch by updating a dependency
+    setTimeout(() => setIsRefreshing(false), 1000);
+  }, []);
+
+  // Watchlist toggle
+  const toggleWatchlist = useCallback(() => {
+    setIsInWatchlist(prev => !prev);
+    // TODO: Save to localStorage or database
+  }, []);
 
   // Listen for stock selection from global search
   useEffect(() => {
@@ -1393,90 +2149,188 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
         // Get company info
         const company = await getCompanyBySymbol(selectedSymbol);
         
-        // Get realtime price from Simplize API
+        // Get realtime price from Simplize (database + API fallback)
         const simplizePrice = await getSimplizePrice(selectedSymbol);
         
-        // Get price history
+        // Get price history from database (VCI service)
         const days = timeframe === '1W' ? 7 : timeframe === '1M' ? 30 : timeframe === '3M' ? 90 : timeframe === '6M' ? 180 : timeframe === '1Y' ? 365 : timeframe === '2Y' ? 730 : 60;
-        const prices = await getStockPrices(selectedSymbol, days);
+        let vciData = await getChartData(selectedSymbol, days);
         
-        if (prices.length > 0) {
-          // Use Simplize price if available, otherwise use database price
-          const currentPrice = simplizePrice?.price || prices[0].close_price;
-          const prevPrice = prices[1]?.close_price || prices[0].close_price;
+        console.log(`[Chart] ${selectedSymbol}: DB data ${vciData.length} candles, last: ${vciData[vciData.length - 1]?.date}`);
+        console.log(`[Chart] Simplize price:`, simplizePrice);
+        
+        // Add today's candle from Simplize if not in database yet
+        if (vciData.length > 0 && simplizePrice && simplizePrice.price > 0) {
+          const lastCandle = vciData[vciData.length - 1];
+          const today = new Date().toISOString().split('T')[0];
+          
+          console.log(`[Chart] Last candle date: ${lastCandle.date}, Today: ${today}`);
+          
+          // Add today's candle if database doesn't have it yet
+          if (lastCandle.date !== today) {
+            console.log(`[Chart] Adding today's candle from Simplize: O=${simplizePrice.open} H=${simplizePrice.high} L=${simplizePrice.low} C=${simplizePrice.price}`);
+            vciData = [...vciData, {
+              date: today,
+              open: simplizePrice.open || simplizePrice.reference || lastCandle.close,
+              high: simplizePrice.high || simplizePrice.price,
+              low: simplizePrice.low || simplizePrice.price,
+              close: simplizePrice.price,
+              volume: simplizePrice.volume || 0
+            }];
+          }
+        }
+        
+        if (vciData.length > 0) {
+          // Use Simplize price as current price (most up-to-date)
+          const currentPrice = simplizePrice?.price || vciData[vciData.length - 1].close;
+          const prevPrice = vciData.length > 1 ? vciData[vciData.length - 2].close : vciData[vciData.length - 1].open;
           const change = simplizePrice?.change || (currentPrice - prevPrice);
           const changePercent = simplizePrice?.changePercent || (prevPrice > 0 ? (change / prevPrice) * 100 : 0);
           
           setStockInfo({
             symbol: selectedSymbol,
             name: company?.company_name || selectedSymbol,
-            price: currentPrice, // Realtime price from Simplize
+            price: currentPrice,
             change: change,
             changePercent: Math.round(changePercent * 100) / 100,
-            volume: simplizePrice?.volume || prices[0].volume,
-            // Calculate market cap from outstanding shares * price
+            volume: simplizePrice?.volume || vciData[vciData.length - 1].volume,
             marketCap: company?.outstanding_shares 
               ? company.outstanding_shares * currentPrice 
               : undefined
           });
           
-          // Convert to candlestick data with indicators
-          const candleData: CandlestickData[] = prices
-            .slice()
-            .reverse()
-            .map((p, index, arr) => {
-              // Calculate MA20
-              let ma20 = undefined;
-              if (index >= 19) {
-                const sum = arr.slice(index - 19, index + 1).reduce((acc, item) => acc + item.close_price, 0);
-                ma20 = sum / 20; // MA20 in VND
-              }
-              
-              // Calculate RSI (simplified)
-              let rsi = undefined;
-              if (index >= 14) {
-                const changes = arr.slice(index - 13, index + 1).map((item, i, a) => 
-                  i > 0 ? item.close_price - a[i-1].close_price : 0
-                );
-                const gains = changes.filter(c => c > 0).reduce((a, b) => a + b, 0) / 14;
-                const losses = Math.abs(changes.filter(c => c < 0).reduce((a, b) => a + b, 0)) / 14;
-                rsi = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
-              }
-              
-              return {
-                date: new Date(p.trading_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
-                open: p.open_price, // Price already in VND
-                high: p.high_price,
-                low: p.low_price,
-                close: p.close_price,
-                volume: p.volume,
-                ma20,
-                rsi
-              };
-            });
+          // Convert VCI data to candlestick format with indicators
+          const candleData: CandlestickData[] = vciData.map((p, index, arr) => {
+            // Calculate MA20
+            let ma20 = undefined;
+            if (index >= 19) {
+              const sum = arr.slice(index - 19, index + 1).reduce((acc, item) => acc + item.close, 0);
+              ma20 = sum / 20;
+            }
+            
+            // Calculate RSI
+            let rsi = undefined;
+            if (index >= 14) {
+              const changes = arr.slice(index - 13, index + 1).map((item, i, a) => 
+                i > 0 ? item.close - a[i-1].close : 0
+              );
+              const gains = changes.filter(c => c > 0).reduce((a, b) => a + b, 0) / 14;
+              const losses = Math.abs(changes.filter(c => c < 0).reduce((a, b) => a + b, 0)) / 14;
+              rsi = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
+            }
+            
+            return {
+              date: p.date, // Keep YYYY-MM-DD format for chart
+              open: p.open,
+              high: p.high,
+              low: p.low,
+              close: p.close,
+              volume: p.volume,
+              ma20,
+              rsi
+            };
+          });
           
           setChartData(candleData);
         } else {
-          // No data - set defaults
-          setStockInfo({
-            symbol: selectedSymbol,
-            name: company?.company_name || selectedSymbol,
-            price: 0,
-            change: 0,
-            changePercent: 0,
-            volume: 0
-          });
-          setChartData([]);
+          // Fallback to database if VCI fails
+          const prices = await getStockPrices(selectedSymbol, days);
+          
+          if (prices.length > 0) {
+            const currentPrice = simplizePrice?.price || prices[0].close_price;
+            const prevPrice = prices[1]?.close_price || prices[0].close_price;
+            const change = simplizePrice?.change || (currentPrice - prevPrice);
+            const changePercent = simplizePrice?.changePercent || (prevPrice > 0 ? (change / prevPrice) * 100 : 0);
+            
+            setStockInfo({
+              symbol: selectedSymbol,
+              name: company?.company_name || selectedSymbol,
+              price: currentPrice,
+              change: change,
+              changePercent: Math.round(changePercent * 100) / 100,
+              volume: simplizePrice?.volume || prices[0].volume,
+              marketCap: company?.outstanding_shares 
+                ? company.outstanding_shares * currentPrice 
+                : undefined
+            });
+            
+            const candleData: CandlestickData[] = prices
+              .slice()
+              .reverse()
+              .map((p, index, arr) => {
+                let ma20 = undefined;
+                if (index >= 19) {
+                  const sum = arr.slice(index - 19, index + 1).reduce((acc, item) => acc + item.close_price, 0);
+                  ma20 = sum / 20;
+                }
+                
+                let rsi = undefined;
+                if (index >= 14) {
+                  const changes = arr.slice(index - 13, index + 1).map((item, i, a) => 
+                    i > 0 ? item.close_price - a[i-1].close_price : 0
+                  );
+                  const gains = changes.filter(c => c > 0).reduce((a, b) => a + b, 0) / 14;
+                  const losses = Math.abs(changes.filter(c => c < 0).reduce((a, b) => a + b, 0)) / 14;
+                  rsi = losses === 0 ? 100 : 100 - (100 / (1 + gains / losses));
+                }
+                
+                return {
+                  date: new Date(p.trading_date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
+                  open: p.open_price,
+                  high: p.high_price,
+                  low: p.low_price,
+                  close: p.close_price,
+                  volume: p.volume,
+                  ma20,
+                  rsi
+                };
+              });
+            
+            setChartData(candleData);
+          } else {
+            // No data at all
+            setStockInfo({
+              symbol: selectedSymbol,
+              name: company?.company_name || selectedSymbol,
+              price: simplizePrice?.price || 0,
+              change: simplizePrice?.change || 0,
+              changePercent: simplizePrice?.changePercent || 0,
+              volume: simplizePrice?.volume || 0
+            });
+            setChartData([]);
+          }
         }
       } catch (error) {
         console.error('Error fetching stock data:', error);
       } finally {
         setLoading(false);
+        setLastUpdate(new Date());
       }
     };
     
     fetchStockData();
-  }, [selectedSymbol, timeframe]);
+    
+    // Auto-refresh every 15 minutes during market hours (9:00 - 15:00)
+    const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
+    
+    const shouldAutoRefresh = () => {
+      if (!isAutoRefresh) return false;
+      const now = new Date();
+      const hour = now.getHours();
+      const day = now.getDay();
+      // Only refresh on weekdays (Mon-Fri) during market hours (9:00 - 15:00)
+      return day >= 1 && day <= 5 && hour >= 9 && hour < 15;
+    };
+    
+    const intervalId = setInterval(() => {
+      if (shouldAutoRefresh()) {
+        console.log(`[Auto-refresh] Updating ${selectedSymbol} at ${new Date().toLocaleTimeString()}`);
+        fetchStockData();
+      }
+    }, REFRESH_INTERVAL);
+    
+    return () => clearInterval(intervalId);
+  }, [selectedSymbol, timeframe, isAutoRefresh]);
 
   // AI Alerts - GPT powered
   const [aiAlerts, setAiAlerts] = useState<AISignal[]>([]);
@@ -1554,113 +2408,232 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
 
   return (
-    <div className="animate-fade-in-up space-y-6 pb-12">
+    <div className={`animate-fade-in-up space-y-4 pb-8 ${isFullscreen ? 'fixed inset-0 z-50 bg-white dark:bg-slate-900 overflow-auto p-4' : ''}`}>
       
-      {/* SECTION 1: HEADER & STOCK SELECTOR */}
-      <div className="glass-panel p-5 rounded-2xl border-b border-indigo-200 dark:border-indigo-500/20">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+      {/* TOP SENAI PRICE TICKER - Bloomberg style */}
+      <div className="rounded-xl overflow-hidden shadow-lg -mx-2 sm:mx-0">
+        <TopSenaiTicker isDark={isDark} />
+      </div>
+      
+      {/* SECTION 1: HEADER & STOCK SELECTOR - Sticky on scroll */}
+      <div className="glass-panel p-3 rounded-2xl border-b border-indigo-200 dark:border-indigo-500/20 sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           {/* Stock Selector */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 w-full lg:w-auto">
             {/* Stock Logo */}
-            <div className="w-14 h-14 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-lg">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shadow-lg flex-shrink-0">
               <img 
                 src={`https://finance.vietstock.vn/image/${selectedSymbol}`}
                 alt={selectedSymbol}
-                className="w-10 h-10 object-contain"
+                className="w-8 h-8 sm:w-10 sm:h-10 object-contain"
                 onError={(e) => {
-                  // Fallback to gradient badge if logo fails
                   const target = e.target as HTMLImageElement;
                   target.style.display = 'none';
-                  target.parentElement!.innerHTML = `<span class="text-xl font-bold bg-gradient-to-br from-indigo-500 to-purple-600 bg-clip-text text-transparent">${selectedSymbol.slice(0, 3)}</span>`;
+                  target.parentElement!.innerHTML = `<span class="text-lg sm:text-xl font-bold bg-gradient-to-br from-indigo-500 to-purple-600 bg-clip-text text-transparent">${selectedSymbol.slice(0, 3)}</span>`;
                 }}
               />
             </div>
             
-            {/* Stock Info */}
-            <div>
+            {/* Stock Info with Mini Sparkline */}
+            <div className="flex-1 min-w-0">
               {loading ? (
-                <div className="animate-pulse">
-                  <div className="h-8 w-32 bg-slate-200 dark:bg-slate-700 rounded mb-2"></div>
-                  <div className="h-4 w-48 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                <div className="animate-pulse space-y-2">
+                  <div className="h-7 w-28 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                  <div className="h-4 w-40 bg-slate-200 dark:bg-slate-700 rounded"></div>
                 </div>
               ) : (
                 <>
-                  <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    {(stockInfo?.price || 0).toLocaleString('vi-VN')} <span className="text-sm font-normal text-slate-500">VND</span>
-                  </h1>
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className={`font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+                      {(stockInfo?.price || 0).toLocaleString('vi-VN')}
+                    </h1>
+                    <span className="text-xs sm:text-sm font-normal text-slate-500">VND</span>
+                    <span className={`font-bold px-2 py-0.5 rounded text-xs sm:text-sm flex items-center gap-1 ${
                       (stockInfo?.changePercent || 0) >= 0 
                         ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10' 
                         : 'text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-500/10'
                     }`}>
-                      <TrendingUp size={14} className={(stockInfo?.changePercent || 0) < 0 ? 'rotate-180' : ''} />
-                      {(stockInfo?.changePercent || 0) > 0 ? '+' : ''}{stockInfo?.changePercent}%
-                      <span className="ml-1 text-xs opacity-75">
-                        ({(stockInfo?.change || 0) > 0 ? '+' : ''}{(stockInfo?.change || 0).toLocaleString('vi-VN')})
-                      </span>
+                      <TrendingUp size={12} className={(stockInfo?.changePercent || 0) < 0 ? 'rotate-180' : ''} />
+                      {(stockInfo?.changePercent || 0) > 0 ? '+' : ''}{stockInfo?.changePercent?.toFixed(2)}%
                     </span>
-                    <span className="text-slate-500 dark:text-slate-400">{stockInfo?.name}</span>
+                    {/* Mini Sparkline Chart - 7 day trend */}
+                    <div className="hidden sm:flex items-center gap-1 ml-2 px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                      <MiniSparkline 
+                        data={chartData.slice(-7).map(d => d.close)} 
+                        color="auto"
+                        width={50}
+                        height={20}
+                      />
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">7D</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 truncate">
+                    <span className="font-medium text-indigo-600 dark:text-indigo-400">{selectedSymbol}</span>
+                    <span className="hidden sm:inline">•</span>
+                    <span className="hidden sm:inline truncate">{stockInfo?.name}</span>
                   </div>
                 </>
               )}
             </div>
+
+            {/* Action Buttons - Mobile & Desktop */}
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+              {/* Watchlist Button */}
+              <button
+                onClick={toggleWatchlist}
+                className={`p-2 rounded-lg transition-all ${
+                  isInWatchlist 
+                    ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-500' 
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-amber-500'
+                }`}
+                title="Thêm vào Watchlist (W)"
+              >
+                <Star size={18} className={isInWatchlist ? 'fill-current' : ''} />
+              </button>
+              
+              {/* Refresh Button */}
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-indigo-500 transition-all disabled:opacity-50"
+                title="Làm mới (R)"
+              >
+                <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              </button>
+              
+              {/* Fullscreen Button - Desktop only */}
+              <button
+                onClick={() => setIsFullscreen(prev => !prev)}
+                className="hidden sm:block p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-indigo-500 transition-all"
+                title="Toàn màn hình (F)"
+              >
+                <Maximize2 size={18} />
+              </button>
+              
+              {/* Mobile Indicators Toggle */}
+              <button
+                onClick={() => setShowMobileIndicators(prev => !prev)}
+                className="lg:hidden p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-indigo-500 transition-all"
+                title="Chỉ số kỹ thuật"
+              >
+                <Activity size={18} />
+              </button>
+            </div>
           </div>
 
-          {/* News Sentiment Widget - Enhanced with Chart */}
-          <div className="hidden md:flex items-center gap-4 bg-white dark:bg-slate-800/30 rounded-xl px-4 py-2.5 border border-slate-200 dark:border-white/5">
-            <div className="flex items-center gap-1.5">
-              <Newspaper size={14} className="text-slate-400" />
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Cảm xúc Tin tức</span>
-            </div>
-            
-            {/* Mini Donut Chart */}
-            <div className="relative w-10 h-10">
-              <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                {/* Background circle */}
-                <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" strokeWidth="4" className="text-slate-200 dark:text-slate-700" />
-                {/* Positive (green) - 70% */}
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#10b981" strokeWidth="4" strokeDasharray="61.6 88" strokeDashoffset="0" strokeLinecap="round" />
-                {/* Neutral (gray) - 10% */}
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#94a3b8" strokeWidth="4" strokeDasharray="8.8 88" strokeDashoffset="-61.6" strokeLinecap="round" />
-                {/* Negative (red) - 20% */}
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#ef4444" strokeWidth="4" strokeDasharray="17.6 88" strokeDashoffset="-70.4" strokeLinecap="round" />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[8px] font-bold text-emerald-500">70%</span>
+          {/* Quick Stats - Desktop only - Enhanced with mini charts */}
+          <div className="hidden lg:flex items-center gap-2">
+            {/* Volume with mini bar chart */}
+            <div className="flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10 rounded-lg px-3 py-2 border border-blue-200 dark:border-blue-500/20">
+              <div className="flex flex-col items-center">
+                <div className="flex items-end gap-0.5 h-4">
+                  {[40, 60, 45, 80, 55, 70, 90].map((h, i) => (
+                    <div 
+                      key={i} 
+                      className="w-1 bg-blue-500 rounded-t opacity-60 hover:opacity-100 transition-opacity"
+                      style={{ height: `${h}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-blue-600 dark:text-blue-400 uppercase font-bold">KL</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-white tabular-nums">
+                  {stockInfo?.volume ? `${(stockInfo.volume / 1000000).toFixed(2)}M` : '--'}
+                </span>
               </div>
             </div>
-            
-            {/* Sentiment Label */}
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-emerald-500">Tích cực</span>
-              <span className="text-[10px] text-slate-400">Xu hướng tốt</span>
+            {/* Market Cap with trend */}
+            <div className="flex items-center gap-2 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-500/10 dark:to-pink-500/10 rounded-lg px-3 py-2 border border-purple-200 dark:border-purple-500/20">
+              <Layers size={14} className="text-purple-500" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-purple-600 dark:text-purple-400 uppercase font-bold">Vốn hóa</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-white tabular-nums">
+                  {simplizeData?.market_cap ? `${(simplizeData.market_cap / 1000000000000).toFixed(1)}T` : '--'}
+                </span>
+              </div>
             </div>
-            
-            {/* Stats */}
-            <div className="flex gap-3 text-[10px] border-l border-slate-200 dark:border-slate-700 pl-3">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="text-slate-600 dark:text-slate-400">70% Bull</span>
+            {/* P/E with indicator */}
+            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 rounded-lg px-3 py-2 border border-emerald-200 dark:border-emerald-500/20">
+              <div className="relative">
+                <Activity size={14} className="text-emerald-500" />
+                {simplizeData?.pe_ratio && simplizeData.pe_ratio < 15 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                )}
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                <span className="text-slate-600 dark:text-slate-400">20% Bear</span>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 uppercase font-bold">P/E</span>
+                <span className={`text-xs font-bold tabular-nums ${
+                  simplizeData?.pe_ratio && simplizeData.pe_ratio < 15 
+                    ? 'text-emerald-600 dark:text-emerald-400' 
+                    : 'text-slate-900 dark:text-white'
+                }`}>
+                  {simplizeData?.pe_ratio?.toFixed(1) || '--'}
+                </span>
               </div>
+            </div>
+            {/* Last Update with live indicator */}
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 ml-2 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Clock size={10} />
+              <span>{lastUpdate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Mobile Bottom Sheet for Technical Indicators */}
+      {showMobileIndicators && (
+        <div className="lg:hidden fixed inset-x-0 bottom-0 z-50 animate-slide-up">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl shadow-2xl border-t border-slate-200 dark:border-slate-700 max-h-[70vh] overflow-hidden">
+            {/* Handle */}
+            <div className="flex justify-center py-2">
+              <div className="w-12 h-1 bg-slate-300 dark:bg-slate-600 rounded-full"></div>
+            </div>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center gap-2">
+                <Activity size={18} className="text-cyan-500" />
+                <span className="font-bold text-slate-900 dark:text-white">Chỉ số PTKT</span>
+              </div>
+              <button 
+                onClick={() => setShowMobileIndicators(false)}
+                className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            {/* Content */}
+            <div className="p-4 overflow-y-auto max-h-[calc(70vh-80px)] grid grid-cols-2 gap-3">
+              <MobileMetricCard label="RS Rating" value={techIndicators.rs !== null ? Math.round(techIndicators.rs).toString() : 'N/A'} color="cyan" />
+              <MobileMetricCard label="RSI (14)" value={techIndicators.rsi14 !== null ? Math.round(techIndicators.rsi14).toString() : 'N/A'} color="purple" />
+              <MobileMetricCard label="MA20" value={techIndicators.ma20 !== null ? Math.round(techIndicators.ma20).toLocaleString() : 'N/A'} color="blue" />
+              <MobileMetricCard label="MACD" value={techIndicators.macd !== null ? techIndicators.macd.toFixed(0) : 'N/A'} color="emerald" />
+              <MobileMetricCard label="Biến động" value={techIndicators.volatility !== null ? `${techIndicators.volatility.toFixed(1)}%` : 'N/A'} color="amber" />
+              <MobileMetricCard label="Vị thế giá" value={techIndicators.pricePosition !== null ? `${Math.round(techIndicators.pricePosition)}%` : 'N/A'} color="rose" />
+            </div>
+          </div>
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-black/50 -z-10"
+            onClick={() => setShowMobileIndicators(false)}
+          ></div>
+        </div>
+      )}
+
       {/* SECTION 2: CANDLESTICK CHART */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-9 glass-panel p-0 rounded-2xl flex flex-col h-[600px] border border-slate-200 dark:border-white/5 relative overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+        {/* Chart - Full width on mobile, 9 cols on desktop */}
+        <div className="lg:col-span-9 glass-panel p-0 rounded-2xl flex flex-col h-[450px] sm:h-[500px] lg:h-[600px] border border-slate-200 dark:border-white/5 relative overflow-hidden">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border-b border-slate-200 dark:border-white/5 z-10 relative bg-white/60 dark:bg-[#0b0f19]/60 backdrop-blur-md gap-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 sm:p-4 border-b border-slate-200 dark:border-white/5 z-10 relative bg-white/60 dark:bg-[#0b0f19]/60 backdrop-blur-md gap-2 sm:gap-3">
             {/* View Mode Switcher */}
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900/40 p-1 rounded-xl border border-slate-200 dark:border-white/10 overflow-x-auto shadow-inner w-full sm:w-auto">
               {[
-                { id: 'chart', label: 'Biểu đồ nến', icon: BarChart2 },
+                { id: 'chart', label: 'Biểu đồ', icon: BarChart2 },
                 { id: 'earnings', label: 'AI Insight', icon: Sparkles },
                 { id: 'news', label: 'Tin tức', icon: Newspaper }
               ].map((mode) => (
@@ -1726,12 +2699,22 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
           <div className="flex-1 w-full min-h-0 relative flex flex-col p-0 bg-slate-50 dark:bg-[#0b0f19]/20">
             {viewMode === 'chart' ? (
               loading ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="animate-spin w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full"></div>
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <EmptyState 
+                    type="loading" 
+                    title="Đang tải biểu đồ"
+                    description={`Đang lấy dữ liệu giá cho ${selectedSymbol}...`}
+                  />
                 </div>
               ) : chartData.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-slate-500">
-                  <p>Không có dữ liệu cho mã {selectedSymbol}</p>
+                <div className="flex-1 flex items-center justify-center p-8">
+                  <EmptyState 
+                    type="chart" 
+                    title={`Chưa có dữ liệu ${selectedSymbol}`}
+                    description="Dữ liệu giá chưa được đồng bộ hoặc mã cổ phiếu không hợp lệ"
+                    action="Thử lại"
+                    onAction={handleRefresh}
+                  />
                 </div>
               ) : (
                 <>
@@ -1741,7 +2724,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       <LightweightChart 
                         data={chartData.map(d => ({
                           time: d.date,
-                          date: new Date(),
+                          date: new Date(d.date),
                           open: d.open,
                           high: d.high,
                           low: d.low,
@@ -1758,7 +2741,7 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                       <TradingViewChart 
                         data={chartData.map(d => ({
                           time: d.date,
-                          date: new Date(),
+                          date: new Date(d.date),
                           open: d.open,
                           high: d.high,
                           low: d.low,
@@ -1840,15 +2823,15 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               </div>
             ) : (
               <div className="p-4 h-full overflow-auto">
-                <StockNewsFeed data={filteredNews} stockSymbol={selectedSymbol} />
+                <StockNewsFeed data={newsData} stockSymbol={selectedSymbol} />
               </div>
             )}
           </div>
         </div>
 
 
-        {/* Right Sidebar - Fundamentals */}
-        <div className="lg:col-span-3 flex flex-col gap-2 h-[600px]">
+        {/* Right Sidebar - Fundamentals - Hidden on mobile, shown on lg */}
+        <div className="hidden lg:flex lg:col-span-3 flex-col gap-2 h-[600px]">
           <div className="flex items-center gap-2 text-sm text-slate-500 px-1 shrink-0">
             <Activity size={16} className="text-cyan-500" />
             <span className="font-medium text-slate-900 dark:text-white">Chỉ số PTKT</span>
@@ -1856,73 +2839,102 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
           
           {/* Scrollable Technical Indicators */}
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1">
-            <MetricCard 
+            <AnimatedMetricCard 
               label="RS Rating" 
               value={techIndicators.rs !== null ? Math.round(techIndicators.rs).toString() : 'N/A'} 
               sub={techIndicators.rs !== null 
                 ? (techIndicators.rs >= 80 ? 'Rất mạnh' : techIndicators.rs >= 60 ? 'Mạnh' : techIndicators.rs >= 40 ? 'Trung bình' : 'Yếu')
                 : undefined}
-              icon={TrendingUp} 
+              status={techIndicators.rs !== null 
+                ? (techIndicators.rs >= 70 ? 'strong' : techIndicators.rs < 40 ? 'weak' : 'neutral')
+                : undefined}
+              type="rs"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="RSI (14)" 
               value={techIndicators.rsi14 !== null ? Math.round(techIndicators.rsi14).toString() : 'N/A'} 
               sub={techIndicators.rsi14 !== null 
                 ? (techIndicators.rsi14 > 70 ? 'Quá mua' : techIndicators.rsi14 < 30 ? 'Quá bán' : 'Trung tính')
                 : undefined}
-              icon={Activity} 
+              status={techIndicators.rsi14 !== null 
+                ? (techIndicators.rsi14 > 70 ? 'bullish' : techIndicators.rsi14 < 30 ? 'bearish' : 'neutral')
+                : undefined}
+              type="rsi"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="MA20" 
               value={techIndicators.ma20 !== null ? Math.round(techIndicators.ma20).toLocaleString('vi-VN') : 'N/A'} 
               sub={techIndicators.ma20 !== null && stockInfo
                 ? (stockInfo.price > techIndicators.ma20 ? '↑ Trên MA' : '↓ Dưới MA')
                 : undefined}
-              icon={Activity} 
+              status={techIndicators.ma20 !== null && stockInfo
+                ? (stockInfo.price > techIndicators.ma20 ? 'bullish' : 'bearish')
+                : undefined}
+              type="ma"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="MACD" 
               value={techIndicators.macd !== null ? techIndicators.macd.toFixed(0) : 'N/A'} 
               sub={techIndicators.macd !== null && techIndicators.macdSignal !== null
                 ? (techIndicators.macd > techIndicators.macdSignal ? '↑ Bullish' : '↓ Bearish')
                 : undefined}
-              icon={Activity} 
+              status={techIndicators.macd !== null && techIndicators.macdSignal !== null
+                ? (techIndicators.macd > techIndicators.macdSignal ? 'bullish' : 'bearish')
+                : undefined}
+              type="macd"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="Biến động" 
               value={techIndicators.volatility !== null ? `${techIndicators.volatility.toFixed(1)}%` : 'N/A'} 
               sub="Năm hóa"
-              icon={Activity} 
+              type="volatility"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="Thay đổi 5D" 
               value={techIndicators.priceChange5d !== null 
                 ? `${techIndicators.priceChange5d >= 0 ? '+' : ''}${techIndicators.priceChange5d.toFixed(1)}%` 
                 : 'N/A'} 
-              icon={TrendingUp} 
+              status={techIndicators.priceChange5d !== null 
+                ? (techIndicators.priceChange5d > 0 ? 'bullish' : techIndicators.priceChange5d < 0 ? 'bearish' : 'neutral')
+                : undefined}
+              type="change"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="KL TB 20" 
               value={techIndicators.avgVolume20 !== null 
                 ? `${(techIndicators.avgVolume20 / 1000000).toFixed(2)}M` 
                 : 'N/A'} 
-              icon={BarChart2} 
+              type="volume"
             />
-            <MetricCard 
+            <AnimatedMetricCard 
               label="Vị thế giá" 
               value={techIndicators.pricePosition !== null 
                 ? `${Math.round(techIndicators.pricePosition)}%` 
                 : 'N/A'} 
               sub="Trong biên độ"
-              icon={Target} 
+              type="position"
             />
+            
+            {/* AI Confidence Meter */}
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+              <AIConfidenceMeter 
+                confidence={aiAlerts[0]?.confidence || aiAnalysis?.confidence || 75}
+                label="Độ tin cậy AI"
+                size={100}
+              />
+            </div>
+            
+            {/* Sector Heatmap Mini */}
+            <div className="mt-3">
+              <SectorHeatmapMini currentSector={simplizeData?.industry} />
+            </div>
           </div>
         </div>
       </div>
 
       {/* SECTION 2.5: THÔNG TIN CƠ BẢN CỔ PHIẾU */}
-      <div className="glass-panel p-6 rounded-2xl border border-slate-200 dark:border-white/5">
-        <div className="flex items-center justify-between mb-6">
+      <div className="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-white/5">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
               <Layers size={20} className="text-white" />
@@ -1932,29 +2944,38 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               <p className="text-xs text-slate-500 dark:text-slate-400">Tổng quan về cổ phiếu {selectedSymbol}</p>
             </div>
           </div>
-          {/* Simplize Scores */}
+          {/* Simplize Scores - Gradient Score Rings in horizontal row */}
           {simplizeData && (
-            <div className="hidden md:flex items-center gap-2">
-              {[
-                { label: 'Định giá', value: simplizeData.valuation_point, color: 'indigo' },
-                { label: 'Tăng trưởng', value: simplizeData.growth_point, color: 'emerald' },
-                { label: 'Hiệu suất', value: simplizeData.performance_point, color: 'amber' },
-                { label: 'Sức khỏe', value: simplizeData.financial_health_point, color: 'blue' },
-              ].map((score, idx) => (
-                <div key={idx} className="flex flex-col items-center px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold">{score.label}</span>
-                  <div className="flex items-center gap-0.5">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <div key={star} className={`w-2 h-2 rounded-full ${star <= (score.value || 0) ? 'bg-indigo-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+            <div className="hidden md:flex flex-row items-center gap-4 p-3 bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-slate-200 dark:border-slate-700">
+              <GradientScoreRing 
+                score={(simplizeData.valuation_point || 0) * 20} 
+                label="Định giá" 
+                size={56}
+                strokeWidth={5}
+              />
+              <GradientScoreRing 
+                score={(simplizeData.growth_point || 0) * 20} 
+                label="Tăng trưởng" 
+                size={56}
+                strokeWidth={5}
+              />
+              <GradientScoreRing 
+                score={(simplizeData.performance_point || 0) * 20} 
+                label="Hiệu suất" 
+                size={56}
+                strokeWidth={5}
+              />
+              <GradientScoreRing 
+                score={(simplizeData.financial_health_point || 0) * 20} 
+                label="Sức khỏe" 
+                size={56}
+                strokeWidth={5}
+              />
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Thông tin công ty */}
           <div className="bg-slate-50 dark:bg-slate-800/30 rounded-xl p-4 border border-slate-200 dark:border-white/5">
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
@@ -2253,31 +3274,36 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
 
       {/* SECTION 3: AI INTELLIGENCE DECK */}
       <div
-        className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"
         style={{ isolation: 'isolate' }}
       >
-        {/* SenAI Health */}
-        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-teal-500/20 h-[200px] overflow-hidden">
-          <div className="bg-white dark:bg-[#0b0f19] p-4 border-b border-slate-200 dark:border-white/5 flex justify-between items-center shrink-0">
+        {/* SenAI Health - Cải tiến */}
+        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-teal-500/20 min-h-[240px] overflow-hidden">
+          <div className="bg-gradient-to-r from-teal-500/10 to-emerald-500/10 dark:from-teal-500/5 dark:to-emerald-500/5 p-3 sm:p-4 border-b border-slate-200 dark:border-white/5 flex justify-between items-center shrink-0">
             <div className="flex items-center gap-2">
-              <BrainCircuit size={18} className="text-teal-500" />
-              <span className="font-bold text-slate-900 dark:text-white text-sm">
-                Chẩn đoán SenAI
-              </span>
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                <BrainCircuit size={16} className="text-white" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 dark:text-white text-sm block">
+                  Chẩn đoán SenAI
+                </span>
+                <span className="text-[10px] text-slate-500">Phân tích AI tổng hợp</span>
+              </div>
             </div>
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+              className={`text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm ${
                 aiAnalysis?.recommendation === 'MUA'
-                  ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20'
+                  ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white'
                   : aiAnalysis?.recommendation === 'BÁN'
-                    ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                    ? 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
+                    : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
               }`}
             >
               {aiAnalysis?.recommendation || 'THEO DÕI'}
             </span>
           </div>
-          <div className="p-3 flex-1 grid grid-cols-3 gap-2 overflow-hidden">
+          <div className="p-3 sm:p-4 flex-1 grid grid-cols-3 gap-2 sm:gap-3">
             <SenAIGauge
               value={aiAnalysis?.rating || 0}
               label="Rating"
@@ -2297,90 +3323,137 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
               isDark={isDark}
             />
           </div>
+          {/* Confidence bar */}
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+            <div className="flex justify-between text-[10px] mb-1">
+              <span className="text-slate-500">Độ tin cậy</span>
+              <span className="font-bold text-teal-600 dark:text-teal-400">{aiAnalysis?.confidence || 0}%</span>
+            </div>
+            <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${aiAnalysis?.confidence || 0}%` }}
+              />
+            </div>
+          </div>
         </div>
 
-        {/* Probability Engine */}
-        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-blue-500/20 h-[200px] overflow-hidden">
-          <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center gap-2 shrink-0">
-            <Activity size={18} className="text-blue-500" />
-            <span className="font-bold text-slate-900 dark:text-white text-sm">
-              Xác suất & Rủi ro
-            </span>
+        {/* Probability Engine - Cải tiến UI */}
+        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-blue-500/20 min-h-[240px] overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 dark:from-blue-500/5 dark:to-indigo-500/5 p-3 sm:p-4 border-b border-slate-200 dark:border-white/5 flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg">
+              <Activity size={16} className="text-white" />
+            </div>
+            <div>
+              <span className="font-bold text-slate-900 dark:text-white text-sm block">
+                Xác suất & Rủi ro
+              </span>
+              <span className="text-[10px] text-slate-500">Đánh giá ngắn hạn</span>
+            </div>
           </div>
-          <div className="p-3 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
-            <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800/40 p-2 rounded-lg border border-slate-200 dark:border-white/5">
+          <div className="p-3 sm:p-4 flex-1 flex flex-col justify-center space-y-3">
+            {/* Nắm giữ tối ưu */}
+            <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-500/10 dark:to-indigo-500/10 p-3 rounded-xl border border-blue-200 dark:border-blue-500/20">
               <div className="flex items-center gap-2">
-                <div className="bg-blue-500/10 p-1.5 rounded-full text-blue-500">
-                  <Clock size={14} />
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Clock size={16} className="text-blue-600 dark:text-blue-400" />
                 </div>
-                <span className="text-xs text-slate-600 dark:text-slate-300">
+                <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">
                   Nắm giữ tối ưu
                 </span>
               </div>
-              <span className="text-base font-bold text-slate-900 dark:text-white">
-                {riskAnalysis?.optimal_holding_days || '--'}{' '}
-                <span className="text-[10px] font-normal text-slate-500">
-                  ngày
-                </span>
+              <span className="text-lg font-bold text-slate-900 dark:text-white">
+                {riskAnalysis?.optimal_holding_days || '--'}
+                <span className="text-xs font-normal text-slate-500 ml-1">ngày</span>
               </span>
             </div>
 
+            {/* Xác suất tăng */}
             <div className="space-y-2">
               <div>
-                <div className="flex justify-between text-[10px] mb-1">
-                  <span className="text-slate-500">Xác suất tăng ngắn hạn</span>
-                  <span className="text-emerald-500 font-bold">
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-slate-600 dark:text-slate-400 font-medium">Xác suất tăng</span>
+                  <span className={`font-bold ${
+                    (riskAnalysis?.upside_probability || 0) >= 60 
+                      ? 'text-emerald-600 dark:text-emerald-400' 
+                      : (riskAnalysis?.upside_probability || 0) >= 45 
+                        ? 'text-amber-600 dark:text-amber-400' 
+                        : 'text-rose-600 dark:text-rose-400'
+                  }`}>
                     {riskAnalysis?.upside_probability?.toFixed(1) || '--'}%
                   </span>
                 </div>
-                <div className="h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 rounded-full"
-                    style={{
-                      width: `${riskAnalysis?.upside_probability || 0}%`,
-                    }}
-                  ></div>
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      (riskAnalysis?.upside_probability || 0) >= 60 
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-400' 
+                        : (riskAnalysis?.upside_probability || 0) >= 45 
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400' 
+                          : 'bg-gradient-to-r from-rose-500 to-red-400'
+                    }`}
+                    style={{ width: `${riskAnalysis?.upside_probability || 0}%` }}
+                  />
                 </div>
               </div>
+
+              {/* Rủi ro điều chỉnh */}
               <div>
-                <div className="flex justify-between text-[10px] mb-1">
-                  <span className="text-slate-500">Rủi ro điều chỉnh</span>
-                  <span className="text-rose-500 font-bold">
+                <div className="flex justify-between text-xs mb-1.5">
+                  <span className="text-slate-600 dark:text-slate-400 font-medium">Rủi ro điều chỉnh</span>
+                  <span className={`font-bold ${
+                    (riskAnalysis?.downside_risk || 0) <= 15 
+                      ? 'text-emerald-600 dark:text-emerald-400' 
+                      : (riskAnalysis?.downside_risk || 0) <= 25 
+                        ? 'text-amber-600 dark:text-amber-400' 
+                        : 'text-rose-600 dark:text-rose-400'
+                  }`}>
                     {riskAnalysis?.downside_risk?.toFixed(1) || '--'}%
                   </span>
                 </div>
-                <div className="h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-rose-500 rounded-full"
-                    style={{ width: `${riskAnalysis?.downside_risk || 0}%` }}
-                  ></div>
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      (riskAnalysis?.downside_risk || 0) <= 15 
+                        ? 'bg-gradient-to-r from-emerald-500 to-green-400' 
+                        : (riskAnalysis?.downside_risk || 0) <= 25 
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400' 
+                          : 'bg-gradient-to-r from-rose-500 to-red-400'
+                    }`}
+                    style={{ width: `${Math.min(100, (riskAnalysis?.downside_risk || 0) * 2.5)}%` }}
+                  />
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Strategy */}
-        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-indigo-500/20 h-[200px] overflow-hidden">
-          <div className="bg-white dark:bg-[#0b0f19] p-3 border-b border-slate-200 dark:border-white/5 flex items-center justify-between shrink-0">
+        {/* Strategy - Cải tiến */}
+        <div className="bg-white/70 dark:bg-slate-800/40 backdrop-blur-xl rounded-2xl flex flex-col border border-indigo-500/20 min-h-[240px] overflow-hidden md:col-span-2 lg:col-span-1">
+          <div className="bg-gradient-to-r from-indigo-500/10 to-purple-500/10 dark:from-indigo-500/5 dark:to-purple-500/5 p-3 sm:p-4 border-b border-slate-200 dark:border-white/5 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              <Target size={18} className="text-indigo-500" />
-              <span className="font-bold text-slate-900 dark:text-white text-sm">
-                Chiến lược giao dịch
-              </span>
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg">
+                <Target size={16} className="text-white" />
+              </div>
+              <div>
+                <span className="font-bold text-slate-900 dark:text-white text-sm block">
+                  Chiến lược giao dịch
+                </span>
+                <span className="text-[10px] text-slate-500">Vùng giá khuyến nghị</span>
+              </div>
             </div>
             {tradingStrategy?.strategy_type && (
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm ${
                   tradingStrategy.strategy_type === 'Theo xu hướng' ||
                   tradingStrategy.strategy_type === 'Breakout'
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                    ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white'
                     : tradingStrategy.strategy_type === 'Đứng ngoài' ||
                         tradingStrategy.strategy_type === 'Chốt lời'
-                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                      ? 'bg-gradient-to-r from-rose-500 to-red-500 text-white'
                       : tradingStrategy.strategy_type === 'Bắt đáy'
-                        ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                        ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
                 }`}
               >
                 {tradingStrategy.strategy_type}
@@ -2388,61 +3461,62 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             )}
           </div>
 
-          <div className="p-3 flex-1 flex flex-col justify-center space-y-2 overflow-hidden">
-            <div className="flex items-center justify-between p-2 bg-teal-500/10 border border-teal-500/20 rounded-lg">
+          <div className="p-3 sm:p-4 flex-1 flex flex-col justify-center space-y-2">
+            {/* Vùng mua */}
+            <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-500/10 dark:to-emerald-500/10 border border-teal-200 dark:border-teal-500/20 rounded-xl">
               <div className="flex items-center gap-2">
-                <CheckCircle2
-                  size={14}
-                  className="text-teal-600 dark:text-teal-400"
-                />
-                <span className="text-xs font-medium text-teal-700 dark:text-teal-100">
-                  Vùng mua
-                </span>
+                <div className="w-7 h-7 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                  <CheckCircle2 size={14} className="text-teal-600 dark:text-teal-400" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-teal-700 dark:text-teal-300">Vùng mua</span>
+                  {tradingStrategy?.buy_zone_strength && (
+                    <span className={`text-[9px] font-bold ${
+                      tradingStrategy.buy_zone_strength === 'STRONG' ? 'text-emerald-600' :
+                      tradingStrategy.buy_zone_strength === 'WEAK' ? 'text-rose-600' : 'text-amber-600'
+                    }`}>
+                      {tradingStrategy.buy_zone_strength === 'STRONG' ? '● Mạnh' : tradingStrategy.buy_zone_strength === 'WEAK' ? '● Yếu' : '● TB'}
+                    </span>
+                  )}
+                </div>
               </div>
               <span className="text-slate-900 dark:text-white font-bold text-sm">
                 {tradingStrategy
                   ? `${tradingStrategy.buy_zone_low?.toLocaleString()} - ${tradingStrategy.buy_zone_high?.toLocaleString()}`
-                  : stockInfo && chartData.length > 0
-                    ? `${roundVNPrice(Math.min(...chartData.map((d) => d.low))).toLocaleString()} - ${roundVNPrice(stockInfo.price * 0.98).toLocaleString()}`
-                    : '--'}
+                  : '--'}
               </span>
             </div>
 
-            <div className="flex items-center justify-between p-2 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+            {/* Cắt lỗ */}
+            <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-rose-50 to-red-50 dark:from-rose-500/10 dark:to-red-500/10 border border-rose-200 dark:border-rose-500/20 rounded-xl">
               <div className="flex items-center gap-2">
-                <ShieldAlert size={14} className="text-rose-500" />
-                <span className="text-xs font-medium text-rose-700 dark:text-rose-100">
-                  Cắt lỗ
-                </span>
+                <div className="w-7 h-7 rounded-lg bg-rose-500/20 flex items-center justify-center">
+                  <ShieldAlert size={14} className="text-rose-600 dark:text-rose-400" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-medium text-rose-700 dark:text-rose-300">Cắt lỗ</span>
+                  {tradingStrategy?.stop_loss_percent && (
+                    <span className="text-[9px] font-bold text-rose-600">-{tradingStrategy.stop_loss_percent}%</span>
+                  )}
+                </div>
               </div>
               <span className="text-slate-900 dark:text-white font-bold text-sm">
-                &lt;{' '}
-                {tradingStrategy
-                  ? tradingStrategy.stop_loss?.toLocaleString()
-                  : stockInfo && chartData.length > 0
-                    ? roundVNPrice(
-                        Math.min(...chartData.map((d) => d.low)) * 0.95
-                      ).toLocaleString()
-                    : '--'}
+                &lt; {tradingStrategy?.stop_loss?.toLocaleString() || '--'}
               </span>
             </div>
 
-            <div className="flex items-center justify-between p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+            {/* Mục tiêu */}
+            <div className="flex items-center justify-between p-2.5 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-xl">
               <div className="flex items-center gap-2">
-                <Target
-                  size={14}
-                  className="text-indigo-600 dark:text-indigo-400"
-                />
-                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-100">
-                  Mục tiêu
-                </span>
+                <div className="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                  <Target size={14} className="text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Mục tiêu</span>
               </div>
               <span className="text-slate-900 dark:text-white font-bold text-sm">
                 {tradingStrategy
-                  ? `${tradingStrategy.target_1?.toLocaleString()} - ${tradingStrategy.target_2?.toLocaleString()}`
-                  : stockInfo
-                    ? `${roundVNPrice(stockInfo.price * 1.1).toLocaleString()} - ${roundVNPrice(stockInfo.price * 1.2).toLocaleString()}`
-                    : '--'}
+                  ? `${tradingStrategy.target_1?.toLocaleString()} → ${tradingStrategy.target_2?.toLocaleString()}`
+                  : '--'}
               </span>
             </div>
           </div>
@@ -2450,8 +3524,8 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
       </div>
 
       {/* SECTION 4: BROKER CONSENSUS */}
-      <div className="glass-panel p-6 rounded-2xl border-t border-slate-200 dark:border-slate-700/50">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="glass-panel p-4 rounded-2xl border-t border-slate-200 dark:border-slate-700/50">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
           <div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
               Đồng thuận từ CTCK

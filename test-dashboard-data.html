@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Dashboard Data</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a2e; color: #fff; }
+        .section { margin: 20px 0; padding: 15px; background: #16213e; border-radius: 8px; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        pre { background: #0f0f23; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
+        h2 { color: #22d3ee; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #333; }
+        th { color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Dashboard Data Test</h1>
+    <p>Testing all data sources used by dashboard components...</p>
+    
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+        
+        const headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "Content-Type": "application/json"
+        };
+
+        async function fetchData(endpoint, params = "") {
+            const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+            const response = await fetch(url, { headers });
+            return response.json();
+        }
+
+        async function runTests() {
+            const results = document.getElementById('results');
+            let html = '';
+
+            // Test 1: Market Indices (MarketPulse component)
+            html += '<div class="section"><h2>1. Market Indices (MarketPulse)</h2>';
+            try {
+                const indices = await fetchData('market_indices', 'order=trading_date.desc&limit=5');
+                if (indices.length > 0) {
+                    html += `<p class="success">✅ Found ${indices.length} records</p>`;
+                    html += '<table><tr><th>Index</th><th>Date</th><th>Close</th><th>Change</th></tr>';
+                    indices.forEach(idx => {
+                        html += `<tr><td>${idx.index_code}</td><td>${idx.trading_date}</td><td>${idx.close_value?.toLocaleString()}</td><td>${idx.change_value}</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p class="error">❌ No data found</p>';
+                }
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            html += '</div>';
+
+            // Test 2: Top Movers (SmartRankings component)
+            html += '<div class="section"><h2>2. Top Movers - Stock Prices (SmartRankings)</h2>';
+            try {
+                // Get latest date first
+                const latest = await fetchData('stock_prices', 'order=trading_date.desc&limit=1');
+                if (latest.length > 0) {
+                    const latestDate = latest[0].trading_date;
+                    html += `<p>Latest trading date: <strong>${latestDate}</strong></p>`;
+                    
+                    const topMovers = await fetchData('stock_prices', `trading_date=eq.${latestDate}&order=volume.desc&limit=10`);
+                    if (topMovers.length > 0) {
+                        html += `<p class="success">✅ Found ${topMovers.length} stocks</p>`;
+                        html += '<table><tr><th>Symbol</th><th>Close</th><th>Volume</th></tr>';
+                        topMovers.forEach(stock => {
+                            html += `<tr><td>${stock.symbol}</td><td>${stock.close_price?.toLocaleString()}</td><td>${(stock.volume/1000000).toFixed(2)}M</td></tr>`;
+                        });
+                        html += '</table>';
+                    } else {
+                        html += '<p class="error">❌ No stocks found for this date</p>';
+                    }
+                } else {
+                    html += '<p class="error">❌ No price data found</p>';
+                }
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            html += '</div>';
+
+            // Test 3: Simplize Company Data (StockAnalysis component)
+            html += '<div class="section"><h2>3. Simplize Company Data (StockAnalysis)</h2>';
+            try {
+                const simplize = await fetchData('simplize_company_data', 'limit=10&order=symbol.asc');
+                if (simplize.length > 0) {
+                    html += `<p class="success">✅ Found ${simplize.length} companies</p>`;
+                    html += '<table><tr><th>Symbol</th><th>Price</th><th>PE</th><th>ROE</th><th>Valuation</th><th>Growth</th></tr>';
+                    simplize.forEach(c => {
+                        html += `<tr><td>${c.symbol}</td><td>${c.price_close?.toLocaleString()}</td><td>${c.pe_ratio?.toFixed(2) || '-'}</td><td>${c.roe?.toFixed(2) || '-'}%</td><td>${c.valuation_point}/5</td><td>${c.growth_point}/5</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p class="error">❌ No simplize data found</p>';
+                }
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            html += '</div>';
+
+            // Test 4: Companies table
+            html += '<div class="section"><h2>4. Companies Table</h2>';
+            try {
+                const companies = await fetchData('companies', 'is_vn100=eq.true&is_active=eq.true&limit=10');
+                if (companies.length > 0) {
+                    html += `<p class="success">✅ Found ${companies.length} VN100 companies</p>`;
+                    html += '<table><tr><th>Symbol</th><th>Name</th><th>Exchange</th><th>Industry</th></tr>';
+                    companies.forEach(c => {
+                        html += `<tr><td>${c.symbol}</td><td>${c.company_name?.substring(0, 30)}</td><td>${c.exchange}</td><td>${c.industry?.substring(0, 20)}</td></tr>`;
+                    });
+                    html += '</table>';
+                } else {
+                    html += '<p class="error">❌ No companies found</p>';
+                }
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            html += '</div>';
+
+            // Test 5: HPG specific data
+            html += '<div class="section"><h2>5. HPG Specific Data</h2>';
+            try {
+                const hpg = await fetchData('simplize_company_data', 'symbol=eq.HPG');
+                if (hpg.length > 0) {
+                    const data = hpg[0];
+                    html += '<p class="success">✅ HPG data found</p>';
+                    html += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    html += '<p class="error">❌ HPG not found in simplize_company_data</p>';
+                }
+            } catch (e) {
+                html += `<p class="error">❌ Error: ${e.message}</p>`;
+            }
+            html += '</div>';
+
+            results.innerHTML = html;
+        }
+
+        runTests();
+    </script>
+</body>
+</html>

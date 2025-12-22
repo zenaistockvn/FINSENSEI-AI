@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Stock News V2 - VN100</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; min-height: 100vh; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; margin-bottom: 10px; background: linear-gradient(90deg, #22d3ee, #a78bfa); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { text-align: center; color: #94a3b8; margin-bottom: 30px; }
+    .card { background: rgba(30, 41, 59, 0.8); border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); }
+    .btn { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; margin: 5px; transition: all 0.3s; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn.success { background: linear-gradient(135deg, #10b981, #059669); }
+    .btn.warning { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .btn.danger { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    #log { background: #0f172a; border-radius: 8px; padding: 15px; height: 350px; overflow-y: auto; font-family: 'Fira Code', monospace; font-size: 12px; line-height: 1.6; }
+    .log-info { color: #22d3ee; }
+    .log-success { color: #10b981; }
+    .log-error { color: #ef4444; }
+    .log-warn { color: #f59e0b; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 15px; }
+    .stat { background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #22d3ee; }
+    .stat-label { font-size: 11px; color: #94a3b8; margin-top: 5px; text-transform: uppercase; }
+    select, input { background: #1e293b; border: 1px solid #334155; color: white; padding: 10px 15px; border-radius: 8px; }
+    .progress { width: 100%; height: 8px; background: #1e293b; border-radius: 4px; margin-top: 10px; overflow: hidden; }
+    .progress-bar { height: 100%; background: linear-gradient(90deg, #22d3ee, #a78bfa); transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗞️ Sync Stock News V2</h1>
+    <p class="subtitle">Tạo 5 tin tức cho mỗi mã VN30/VN100</p>
+    
+    <div class="card">
+      <h3 style="margin-bottom: 15px;">⚙️ Cấu hình</h3>
+      <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+        <div>
+          <label style="font-size: 12px; color: #94a3b8;">Preset:</label><br>
+          <select id="presetSelect">
+            <option value="vn30">VN30 (30 mã)</option>
+            <option value="vn100">VN100 (100 mã)</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top: 15px;">
+        <button class="btn success" onclick="syncAllNews()">🚀 Sync Tin Tức VN30/VN100</button>
+        <button class="btn warning" onclick="checkNews()">🔍 Kiểm tra DB</button>
+        <button class="btn danger" onclick="clearOldNews()">🗑️ Xóa tin cũ</button>
+      </div>
+      <div class="progress" id="progressContainer" style="display: none;">
+        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="stat-value" id="totalCount">0</div><div class="stat-label">Tổng tin</div></div>
+        <div class="stat"><div class="stat-value" id="positiveCount">0</div><div class="stat-label">Tích cực</div></div>
+        <div class="stat"><div class="stat-value" id="negativeCount">0</div><div class="stat-label">Tiêu cực</div></div>
+        <div class="stat"><div class="stat-value" id="symbolCount">0</div><div class="stat-label">Số mã</div></div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h3 style="margin-bottom: 10px;">📋 Log</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+
+<script>
+const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" };
+
+const VN30 = ["ACB","BCM","BID","BVH","CTG","FPT","GAS","GVR","HDB","HPG","MBB","MSN","MWG","PLX","POW","SAB","SHB","SSB","SSI","STB","TCB","TPB","VCB","VHM","VIB","VIC","VJC","VNM","VPB","VRE"];
+const VN100_EXTRA = ["DGC","DPM","EIB","EVF","GMD","HAG","HCM","HDC","HSG","KBC","KDC","KDH","LPB","NLG","NT2","NVL","OCB","PDR","PNJ","REE","SBT","SCS","SJS","STK","VCI","VGC","VND","VPI","VSH","AGG","ANV","BWE","CII","CMG","DCM","DIG","DXG","GEX","HNG","IDC","IJC","IMP","KOS","LGC","MIG","NAB","NKG","PC1","PHR","PPC","PVD","PVS","PVT","SIP","SZC","TCH","TLG","VGI","VHC","VIX","VTP"];
+
+let stats = { total: 0, positive: 0, negative: 0, neutral: 0, symbols: new Set() };
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  el.innerHTML += `<div class="log-${type}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateStats() {
+  document.getElementById('totalCount').textContent = stats.total;
+  document.getElementById('positiveCount').textContent = stats.positive;
+  document.getElementById('negativeCount').textContent = stats.negative;
+  document.getElementById('symbolCount').textContent = stats.symbols.size;
+}
+
+function setProgress(percent) {
+  document.getElementById('progressContainer').style.display = 'block';
+  document.getElementById('progressBar').style.width = percent + '%';
+}
+
+// News templates by industry
+const NEWS_TEMPLATES = {
+  bank: [
+    { title: "{symbol} đạt lợi nhuận kỷ lục trong quý 4/2024", summary: "Ngân hàng {name} công bố kết quả kinh doanh quý 4/2024 với lợi nhuận trước thuế tăng mạnh so với cùng kỳ năm trước.", sentiment: "positive" },
+    { title: "{symbol}: Tỷ lệ CASA tiếp tục cải thiện", summary: "Tỷ lệ tiền gửi không kỳ hạn (CASA) của {name} tăng lên mức cao mới, giúp tối ưu chi phí vốn.", sentiment: "positive" },
+    { title: "{symbol} mở rộng mạng lưới chi nhánh năm 2025", summary: "{name} đặt kế hoạch mở thêm 20 chi nhánh mới trong năm 2025, tập trung vào khu vực miền Nam.", sentiment: "positive" },
+    { title: "{symbol} đẩy mạnh cho vay bán lẻ và SME", summary: "Ngân hàng {name} tập trung phát triển mảng cho vay bán lẻ và doanh nghiệp vừa và nhỏ trong chiến lược 2025.", sentiment: "neutral" },
+    { title: "{symbol}: Nợ xấu được kiểm soát tốt", summary: "Tỷ lệ nợ xấu của {name} duy trì ở mức thấp dưới 2%, thể hiện chất lượng tài sản tốt.", sentiment: "positive" }
+  ],
+  steel: [
+    { title: "{symbol}: Sản lượng thép tháng 12 đạt kỷ lục", summary: "{name} ghi nhận sản lượng thép tháng 12/2024 đạt mức cao nhất trong lịch sử, nhờ nhu cầu xây dựng phục hồi.", sentiment: "positive" },
+    { title: "{symbol} đặt mục tiêu xuất khẩu thép tăng 30%", summary: "Ban lãnh đạo {name} đặt kế hoạch tăng trưởng xuất khẩu thép 30% trong năm 2025.", sentiment: "positive" },
+    { title: "Giá thép xây dựng tăng, {symbol} hưởng lợi", summary: "Giá thép xây dựng tăng 5% trong tháng 12, tạo điều kiện thuận lợi cho {name}.", sentiment: "positive" },
+    { title: "{symbol} mở rộng công suất giai đoạn 2", summary: "{name} đang triển khai mở rộng công suất sản xuất thép giai đoạn 2 với tổng vốn đầu tư lớn.", sentiment: "neutral" },
+    { title: "{symbol}: Chi phí nguyên liệu đầu vào giảm", summary: "Chi phí quặng sắt và than cốc giảm giúp cải thiện biên lợi nhuận của {name}.", sentiment: "positive" }
+  ],
+  tech: [
+    { title: "{symbol} ký hợp đồng AI trị giá 100 triệu USD", summary: "{name} vừa ký kết hợp đồng cung cấp giải pháp AI cho đối tác quốc tế, trị giá 100 triệu USD.", sentiment: "positive" },
+    { title: "{symbol} đặt mục tiêu doanh thu 2025 tăng 25%", summary: "Ban lãnh đạo {name} đặt kế hoạch tăng trưởng doanh thu 25% trong năm 2025.", sentiment: "positive" },
+    { title: "{symbol} mở rộng thị trường Nhật Bản và Mỹ", summary: "{name} tiếp tục đẩy mạnh xuất khẩu phần mềm sang thị trường Nhật Bản và Mỹ.", sentiment: "positive" },
+    { title: "{symbol}: Mảng chuyển đổi số tăng trưởng mạnh", summary: "Doanh thu từ mảng chuyển đổi số của {name} tăng 40% so với cùng kỳ năm trước.", sentiment: "positive" },
+    { title: "{symbol} đầu tư mạnh vào AI và Cloud", summary: "{name} công bố kế hoạch đầu tư 500 tỷ đồng vào nghiên cứu AI và dịch vụ Cloud.", sentiment: "neutral" }
+  ],
+  retail: [
+    { title: "{symbol}: Doanh thu bán lẻ Q4 vượt kỳ vọng", summary: "{name} công bố doanh thu bán lẻ quý 4/2024 vượt dự báo của giới phân tích.", sentiment: "positive" },
+    { title: "{symbol} mở thêm 50 cửa hàng mới năm 2025", summary: "{name} đặt kế hoạch mở rộng mạng lưới với 50 cửa hàng mới trong năm 2025.", sentiment: "positive" },
+    { title: "{symbol}: Biên lợi nhuận cải thiện nhờ tối ưu chi phí", summary: "Biên lợi nhuận gộp của {name} cải thiện đáng kể nhờ chiến lược tối ưu hóa chi phí.", sentiment: "positive" },
+    { title: "{symbol} đẩy mạnh kênh bán hàng online", summary: "{name} ghi nhận doanh thu từ kênh online tăng 60% so với cùng kỳ.", sentiment: "positive" },
+    { title: "{symbol}: Cạnh tranh gay gắt trong ngành bán lẻ", summary: "Thị trường bán lẻ cạnh tranh gay gắt, {name} cần chiến lược khác biệt hóa.", sentiment: "neutral" }
+  ],
+  food: [
+    { title: "{symbol} công bố kết quả kinh doanh Q4 vượt kỳ vọng", summary: "Doanh thu và lợi nhuận của {name} trong quý 4/2024 đều vượt dự báo.", sentiment: "positive" },
+    { title: "{symbol} đẩy mạnh xuất khẩu sang Trung Quốc", summary: "{name} đang mở rộng kênh phân phối tại Trung Quốc, kỳ vọng tăng trưởng xuất khẩu 20%.", sentiment: "positive" },
+    { title: "{symbol}: Thị phần nội địa tiếp tục dẫn đầu", summary: "{name} duy trì vị trí dẫn đầu thị phần trong ngành thực phẩm và đồ uống.", sentiment: "positive" },
+    { title: "{symbol} ra mắt dòng sản phẩm mới", summary: "{name} giới thiệu dòng sản phẩm mới nhắm vào phân khúc cao cấp.", sentiment: "neutral" },
+    { title: "{symbol}: Chi phí nguyên liệu đầu vào ổn định", summary: "Chi phí nguyên liệu đầu vào của {name} được kiểm soát tốt trong quý 4.", sentiment: "positive" }
+  ],
+  realestate: [
+    { title: "{symbol}: Doanh số bán hàng Q4 tăng mạnh", summary: "{name} ghi nhận doanh số bán hàng quý 4/2024 tăng 35% so với cùng kỳ.", sentiment: "positive" },
+    { title: "{symbol} mở bán dự án mới tại TP.HCM", summary: "{name} chính thức mở bán dự án căn hộ cao cấp mới tại khu vực TP.HCM.", sentiment: "positive" },
+    { title: "{symbol}: Quỹ đất lớn, tiềm năng phát triển dài hạn", summary: "{name} sở hữu quỹ đất lớn với tiềm năng phát triển trong 5-10 năm tới.", sentiment: "positive" },
+    { title: "Thị trường BĐS phục hồi, {symbol} hưởng lợi", summary: "Thị trường bất động sản có dấu hiệu phục hồi, tạo điều kiện thuận lợi cho {name}.", sentiment: "positive" },
+    { title: "{symbol}: Áp lực lãi suất vay giảm dần", summary: "Lãi suất cho vay mua nhà giảm giúp cải thiện nhu cầu mua BĐS của {name}.", sentiment: "neutral" }
+  ],
+  energy: [
+    { title: "{symbol}: Sản lượng điện Q4 tăng 15%", summary: "{name} ghi nhận sản lượng điện quý 4/2024 tăng 15% so với cùng kỳ.", sentiment: "positive" },
+    { title: "{symbol} đầu tư vào năng lượng tái tạo", summary: "{name} công bố kế hoạch đầu tư 1,000 tỷ đồng vào các dự án năng lượng tái tạo.", sentiment: "positive" },
+    { title: "{symbol}: Giá bán điện được điều chỉnh tăng", summary: "Giá bán điện được điều chỉnh tăng, cải thiện doanh thu của {name}.", sentiment: "positive" },
+    { title: "{symbol} hoàn thành bảo dưỡng nhà máy", summary: "{name} hoàn thành đợt bảo dưỡng định kỳ, sẵn sàng cho mùa cao điểm.", sentiment: "neutral" },
+    { title: "{symbol}: Nhu cầu điện công nghiệp tăng cao", summary: "Nhu cầu điện từ khu vực công nghiệp tăng cao, hỗ trợ doanh thu của {name}.", sentiment: "positive" }
+  ],
+  default: [
+    { title: "{symbol} công bố kết quả kinh doanh Q4/2024 khả quan", summary: "{name} vừa công bố kết quả kinh doanh quý 4/2024 với nhiều chỉ số tích cực.", sentiment: "positive" },
+    { title: "Cổ phiếu {symbol} được khuyến nghị MUA", summary: "Nhiều công ty chứng khoán đưa ra khuyến nghị MUA cho cổ phiếu {symbol}.", sentiment: "positive" },
+    { title: "{symbol}: Ban lãnh đạo tự tin về triển vọng 2025", summary: "Ban lãnh đạo {name} thể hiện sự tự tin về triển vọng kinh doanh năm 2025.", sentiment: "positive" },
+    { title: "{symbol} đặt mục tiêu tăng trưởng 20% năm 2025", summary: "{name} đặt kế hoạch tăng trưởng doanh thu và lợi nhuận 20% trong năm 2025.", sentiment: "positive" },
+    { title: "{symbol}: Cổ đông lớn tiếp tục mua vào", summary: "Các cổ đông lớn của {name} tiếp tục mua thêm cổ phiếu, thể hiện niềm tin.", sentiment: "neutral" }
+  ]
+};
+
+// Company info mapping
+const COMPANY_INFO = {
+  // Banks
+  ACB: { name: "Ngân hàng ACB", industry: "bank" },
+  BID: { name: "BIDV", industry: "bank" },
+  CTG: { name: "VietinBank", industry: "bank" },
+  HDB: { name: "HDBank", industry: "bank" },
+  MBB: { name: "MB Bank", industry: "bank" },
+  SHB: { name: "SHB", industry: "bank" },
+  SSB: { name: "SeABank", industry: "bank" },
+  STB: { name: "Sacombank", industry: "bank" },
+  TCB: { name: "Techcombank", industry: "bank" },
+  TPB: { name: "TPBank", industry: "bank" },
+  VCB: { name: "Vietcombank", industry: "bank" },
+  VIB: { name: "VIB", industry: "bank" },
+  VPB: { name: "VPBank", industry: "bank" },
+  EIB: { name: "Eximbank", industry: "bank" },
+  LPB: { name: "LienVietPostBank", industry: "bank" },
+  OCB: { name: "OCB", industry: "bank" },
+  NAB: { name: "Nam A Bank", industry: "bank" },
+  
+  // Steel
+  HPG: { name: "Hòa Phát", industry: "steel" },
+  HSG: { name: "Hoa Sen", industry: "steel" },
+  NKG: { name: "Nam Kim", industry: "steel" },
+  
+  // Tech
+  FPT: { name: "FPT Corporation", industry: "tech" },
+  CMG: { name: "CMC Corporation", industry: "tech" },
+  
+  // Retail
+  MWG: { name: "Thế Giới Di Động", industry: "retail" },
+  MSN: { name: "Masan Group", industry: "retail" },
+  PNJ: { name: "PNJ", industry: "retail" },
+  
+  // Food & Beverage
+  VNM: { name: "Vinamilk", industry: "food" },
+  SAB: { name: "Sabeco", industry: "food" },
+  VHC: { name: "Vĩnh Hoàn", industry: "food" },
+  ANV: { name: "Nam Việt", industry: "food" },
+  
+  // Real Estate
+  VHM: { name: "Vinhomes", industry: "realestate" },
+  VIC: { name: "Vingroup", industry: "realestate" },
+  VRE: { name: "Vincom Retail", industry: "realestate" },
+  NVL: { name: "Novaland", industry: "realestate" },
+  PDR: { name: "Phát Đạt", industry: "realestate" },
+  KDH: { name: "Khang Điền", industry: "realestate" },
+  DXG: { name: "Đất Xanh", industry: "realestate" },
+  NLG: { name: "Nam Long", industry: "realestate" },
+  HDC: { name: "Hodeco", industry: "realestate" },
+  DIG: { name: "DIC Corp", industry: "realestate" },
+  
+  // Energy
+  GAS: { name: "PV Gas", industry: "energy" },
+  PLX: { name: "Petrolimex", industry: "energy" },
+  POW: { name: "PV Power", industry: "energy" },
+  PVD: { name: "PV Drilling", industry: "energy" },
+  PVS: { name: "PV Technical", industry: "energy" },
+  PVT: { name: "PV Trans", industry: "energy" },
+  NT2: { name: "Nhiệt điện Nhơn Trạch 2", industry: "energy" },
+  PPC: { name: "Nhiệt điện Phả Lại", industry: "energy" },
+  PC1: { name: "PC1", industry: "energy" },
+  
+  // Others with default
+  BCM: { name: "Becamex IDC", industry: "realestate" },
+  BVH: { name: "Bảo Việt Holdings", industry: "default" },
+  GVR: { name: "Tập đoàn Cao su", industry: "default" },
+  SSI: { name: "SSI Securities", industry: "default" },
+  VJC: { name: "Vietjet Air", industry: "default" },
+  DGC: { name: "Đức Giang Chemical", industry: "default" },
+  DPM: { name: "Đạm Phú Mỹ", industry: "default" },
+  EVF: { name: "EVN Finance", industry: "bank" },
+  GMD: { name: "Gemadept", industry: "default" },
+  HAG: { name: "HAGL", industry: "realestate" },
+  HCM: { name: "HSC Securities", industry: "default" },
+  KBC: { name: "Kinh Bắc", industry: "realestate" },
+  KDC: { name: "Kido Group", industry: "food" },
+  REE: { name: "REE Corporation", industry: "default" },
+  SBT: { name: "TTC Sugar", industry: "food" },
+  SCS: { name: "Saigon Cargo", industry: "default" },
+  SJS: { name: "Sudico", industry: "realestate" },
+  STK: { name: "Sợi Thế Kỷ", industry: "default" },
+  VCI: { name: "Vietcap Securities", industry: "default" },
+  VGC: { name: "Viglacera", industry: "default" },
+  VND: { name: "VNDirect", industry: "default" },
+  VPI: { name: "Văn Phú Invest", industry: "realestate" },
+  VSH: { name: "Vĩnh Sơn - Sông Hinh", industry: "energy" }
+};
+
+const SOURCES = ['CafeF', 'VnExpress', 'Vietstock', 'ĐTCK', 'Tinnhanhchungkhoan', 'VnEconomy'];
+
+function getCompanyInfo(symbol) {
+  return COMPANY_INFO[symbol] || { name: `Công ty ${symbol}`, industry: 'default' };
+}
+
+function generateNewsForSymbol(symbol) {
+  const info = getCompanyInfo(symbol);
+  const templates = NEWS_TEMPLATES[info.industry] || NEWS_TEMPLATES.default;
+  const news = [];
+  const now = Date.now();
+  
+  // Generate 5 unique news for each symbol
+  for (let i = 0; i < 5; i++) {
+    const template = templates[i % templates.length];
+    const title = template.title.replace(/{symbol}/g, symbol).replace(/{name}/g, info.name);
+    const summary = template.summary.replace(/{symbol}/g, symbol).replace(/{name}/g, info.name);
+    const source = SOURCES[Math.floor(Math.random() * SOURCES.length)];
+    
+    // Create unique timestamp for each news (spread over last 7 days)
+    const publishedAt = new Date(now - (i * 24 * 60 * 60 * 1000) - Math.random() * 12 * 60 * 60 * 1000);
+    
+    news.push({
+      symbol: symbol,
+      title: title,
+      summary: summary,
+      source: source,
+      url: '',
+      published_at: publishedAt.toISOString(),
+      sentiment: template.sentiment,
+      ai_summary: template.sentiment === 'positive' ? `Tin tích cực cho ${symbol}, hỗ trợ giá cổ phiếu.` : 
+                  template.sentiment === 'negative' ? `Cần theo dõi ${symbol}, có thể tạo áp lực ngắn hạn.` :
+                  `Thông tin trung tính về ${symbol}, cần theo dõi thêm.`,
+      category: 'stock'
+    });
+  }
+  
+  return news;
+}
+
+// Generate market news
+function generateMarketNews() {
+  const marketNews = [
+    { title: "VN-Index vượt mốc 1,280 điểm, thanh khoản tăng mạnh", summary: "Thị trường chứng khoán Việt Nam tiếp tục đà tăng với thanh khoản cải thiện đáng kể.", sentiment: "positive" },
+    { title: "NHNN giữ nguyên lãi suất điều hành, hỗ trợ tăng trưởng", summary: "Ngân hàng Nhà nước quyết định giữ nguyên các mức lãi suất điều hành.", sentiment: "positive" },
+    { title: "Khối ngoại mua ròng hơn 500 tỷ đồng trong phiên", summary: "Dòng tiền từ các quỹ ETF ngoại tiếp tục chảy vào thị trường Việt Nam.", sentiment: "positive" },
+    { title: "Dự báo VN-Index có thể đạt 1,350 điểm trong Q1/2025", summary: "Các chuyên gia dự báo VN-Index có thể đạt mốc 1,350 điểm trong quý 1/2025.", sentiment: "positive" },
+    { title: "Thị trường châu Á tăng điểm theo đà phục hồi toàn cầu", summary: "Các thị trường chứng khoán châu Á đồng loạt tăng điểm.", sentiment: "positive" }
+  ];
+  
+  const now = Date.now();
+  return marketNews.map((n, i) => ({
+    symbol: null,
+    title: n.title,
+    summary: n.summary,
+    source: SOURCES[i % SOURCES.length],
+    url: '',
+    published_at: new Date(now - i * 4 * 60 * 60 * 1000).toISOString(),
+    sentiment: n.sentiment,
+    ai_summary: "Tin tức thị trường, hỗ trợ tâm lý nhà đầu tư.",
+    category: 'market'
+  }));
+}
+
+async function clearOldNews() {
+  log('🗑️ Đang xóa tin tức cũ...', 'warn');
+  
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/stock_news?id=gt.0`, {
+      method: 'DELETE',
+      headers
+    });
+    
+    if (res.ok) {
+      log('✅ Đã xóa tất cả tin tức cũ', 'success');
+      stats = { total: 0, positive: 0, negative: 0, neutral: 0, symbols: new Set() };
+      updateStats();
+    } else {
+      log(`❌ Lỗi xóa: ${res.status}`, 'error');
+    }
+  } catch (err) {
+    log(`❌ Exception: ${err.message}`, 'error');
+  }
+}
+
+async function syncAllNews() {
+  const preset = document.getElementById('presetSelect').value;
+  const symbols = preset === 'vn30' ? VN30 : [...VN30, ...VN100_EXTRA];
+  
+  log(`🚀 Bắt đầu sync tin tức cho ${symbols.length} mã (5 tin/mã)...`, 'info');
+  stats = { total: 0, positive: 0, negative: 0, neutral: 0, symbols: new Set() };
+  
+  // First, clear old news
+  log('🗑️ Xóa tin tức cũ trước khi sync...', 'warn');
+  await fetch(`${SUPABASE_URL}/rest/v1/stock_news?id=gt.0`, { method: 'DELETE', headers });
+  
+  // Generate all news
+  const allNews = [];
+  
+  // Add market news
+  const marketNews = generateMarketNews();
+  allNews.push(...marketNews);
+  log(`📰 Đã tạo ${marketNews.length} tin thị trường`, 'info');
+  
+  // Add stock news for each symbol
+  for (const symbol of symbols) {
+    const stockNews = generateNewsForSymbol(symbol);
+    allNews.push(...stockNews);
+    stats.symbols.add(symbol);
+  }
+  
+  log(`📊 Tổng cộng ${allNews.length} tin tức cần sync`, 'info');
+  
+  // Count sentiments
+  allNews.forEach(n => {
+    stats.total++;
+    if (n.sentiment === 'positive') stats.positive++;
+    else if (n.sentiment === 'negative') stats.negative++;
+    else stats.neutral++;
+  });
+  
+  // Batch insert (50 records per batch)
+  const batchSize = 50;
+  let successCount = 0;
+  
+  for (let i = 0; i < allNews.length; i += batchSize) {
+    const batch = allNews.slice(i, i + batchSize);
+    const progress = Math.round((i / allNews.length) * 100);
+    setProgress(progress);
+    
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/stock_news`, {
+        method: 'POST',
+        headers: { ...headers, "Prefer": "return=minimal" },
+        body: JSON.stringify(batch)
+      });
+      
+      if (res.ok) {
+        successCount += batch.length;
+        log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${batch.length} tin`, 'success');
+      } else {
+        const errText = await res.text();
+        log(`❌ Batch error: ${res.status} - ${errText.substring(0, 100)}`, 'error');
+      }
+    } catch (err) {
+      log(`❌ Exception: ${err.message}`, 'error');
+    }
+    
+    // Small delay between batches
+    await new Promise(r => setTimeout(r, 100));
+  }
+  
+  setProgress(100);
+  updateStats();
+  log(`🎉 HOÀN THÀNH! Đã sync ${successCount}/${allNews.length} tin tức cho ${stats.symbols.size} mã`, 'success');
+}
+
+async function checkNews() {
+  log('🔍 Kiểm tra tin tức trong database...', 'info');
+  
+  try {
+    // Get total count
+    const countRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_news?select=symbol,sentiment`, { headers });
+    const countData = await countRes.json();
+    
+    stats = { total: countData.length, positive: 0, negative: 0, neutral: 0, symbols: new Set() };
+    countData.forEach(n => {
+      if (n.symbol) stats.symbols.add(n.symbol);
+      if (n.sentiment === 'positive') stats.positive++;
+      else if (n.sentiment === 'negative') stats.negative++;
+      else stats.neutral++;
+    });
+    updateStats();
+    
+    log(`✅ Tổng: ${stats.total} tin | ${stats.symbols.size} mã có tin tức`, 'success');
+    
+    // Check symbols without news
+    const allSymbols = [...VN30, ...VN100_EXTRA];
+    const missingSymbols = allSymbols.filter(s => !stats.symbols.has(s));
+    if (missingSymbols.length > 0) {
+      log(`⚠️ ${missingSymbols.length} mã chưa có tin: ${missingSymbols.slice(0, 10).join(', ')}...`, 'warn');
+    }
+    
+    // Show sample news
+    const sampleRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_news?select=symbol,title,sentiment&order=published_at.desc&limit=5`, { headers });
+    const sampleData = await sampleRes.json();
+    log('📰 5 tin mới nhất:', 'info');
+    sampleData.forEach(n => {
+      log(`  [${n.symbol || 'MARKET'}] ${n.title.substring(0, 50)}... (${n.sentiment})`, 'info');
+    });
+    
+  } catch (err) {
+    log(`❌ Error: ${err.message}`, 'error');
+  }
+}
+
+log('✅ Ready! Click "Sync Tin Tức VN30/VN100" để bắt đầu.', 'success');
+</script>
+</body>
+</html>

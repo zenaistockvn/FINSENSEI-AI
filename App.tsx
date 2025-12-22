@@ -300,11 +300,19 @@ const App: React.FC = () => {
 
           {/* Main Content Container */}
           <div 
-            className={`flex-1 overflow-y-auto z-10 scroll-smooth safe-area-inset ${activeTab === 'sen_assistant' ? 'p-0 overflow-hidden' : 'p-4 md:p-8'}`}
+            className={`flex-1 overflow-y-auto z-10 scroll-smooth safe-area-inset ${
+              activeTab === 'sen_assistant' 
+                ? 'p-0 overflow-hidden' 
+                : 'p-2 md:p-4'
+            }`}
             role="region"
             aria-label={`Trang ${activeTab}`}
           >
-            <div className={`${activeTab === 'sen_assistant' ? 'h-full w-full' : 'max-w-7xl mx-auto h-full'}`}>
+            <div className={`${
+              activeTab === 'sen_assistant' 
+                ? 'h-full w-full' 
+                : 'w-full h-full'
+            }`}>
               {renderContent()}
             </div>
           </div>

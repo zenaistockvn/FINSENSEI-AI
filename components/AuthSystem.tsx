@@ -444,4 +444,6 @@ export const UserProfile: React.FC = () => {
   );
 };
 
+// Export AuthSystem as an alias for UserProfile for backward compatibility
+const AuthSystem = UserProfile;
 export default AuthSystem;

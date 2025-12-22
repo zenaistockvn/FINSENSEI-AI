@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Check Trading Strategy Table</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    h1 { color: #22d3ee; }
+    h3 { color: #a78bfa; margin-top: 20px; }
+    pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+    .warn { color: #f59e0b; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+    th { background: #334155; color: #22d3ee; }
+    .btn { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin-right: 10px; }
+    .btn:hover { background: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Check Trading Strategy Table</h1>
+  
+  <div class="card">
+    <button class="btn" onclick="checkTable()">1. Kiểm tra cấu trúc bảng</button>
+    <button class="btn" onclick="checkData()">2. Kiểm tra dữ liệu mẫu</button>
+    <button class="btn" onclick="checkNewColumns()">3. Kiểm tra cột mới</button>
+  </div>
+  
+  <div class="card">
+    <h3>📋 Kết quả</h3>
+    <div id="result"></div>
+  </div>
+
+<script>
+const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+const headers = {
+  "apikey": SUPABASE_KEY,
+  "Authorization": `Bearer ${SUPABASE_KEY}`,
+  "Content-Type": "application/json"
+};
+
+function log(html) {
+  document.getElementById('result').innerHTML = html;
+}
+
+async function checkTable() {
+  log('<p>Đang kiểm tra...</p>');
+  
+  try {
+    // Try to get one record to see columns
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy?limit=1`, { headers });
+    
+    if (!res.ok) {
+      const err = await res.text();
+      log(`<p class="error">❌ Lỗi: ${err}</p><p>Bảng trading_strategy có thể chưa tồn tại. Cần tạo bảng trước.</p>`);
+      return;
+    }
+    
+    const data = await res.json();
+    
+    if (data.length === 0) {
+      log(`<p class="warn">⚠️ Bảng trading_strategy tồn tại nhưng chưa có dữ liệu.</p>
+           <p>Hãy chạy sync-trading-strategy.html để tạo dữ liệu.</p>`);
+      return;
+    }
+    
+    const columns = Object.keys(data[0]);
+    
+    let html = `<p class="success">✅ Bảng trading_strategy tồn tại với ${columns.length} cột:</p>`;
+    html += '<table><tr><th>#</th><th>Tên cột</th><th>Giá trị mẫu</th></tr>';
+    
+    columns.forEach((col, i) => {
+      const val = data[0][col];
+      html += `<tr><td>${i+1}</td><td>${col}</td><td>${val !== null ? val : '<em>null</em>'}</td></tr>`;
+    });
+    
+    html += '</table>';
+    
+    // Check for new columns
+    const newCols = ['buy_zone_optimal', 'buy_zone_strength', 'stop_loss_percent', 'stop_loss_type', 
+                     'target_1_percent', 'target_1_rr', 'target_2_percent', 'target_2_rr', 
+                     'target_3_percent', 'target_3_rr', 'confidence'];
+    
+    const missingCols = newCols.filter(c => !columns.includes(c));
+    
+    if (missingCols.length > 0) {
+      html += `<h3 class="warn">⚠️ Thiếu ${missingCols.length} cột mới:</h3>`;
+      html += `<pre>${missingCols.join('\n')}</pre>`;
+      html += `<p>Cần chạy SQL để thêm các cột này.</p>`;
+    } else {
+      html += `<p class="success">✅ Tất cả cột mới đã có!</p>`;
+    }
+    
+    log(html);
+    
+  } catch (err) {
+    log(`<p class="error">❌ Error: ${err.message}</p>`);
+  }
+}
+
+async function checkData() {
+  log('<p>Đang kiểm tra dữ liệu...</p>');
+  
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy?symbol=eq.HPG&order=analysis_date.desc&limit=1`, { headers });
+    const data = await res.json();
+    
+    if (data.length === 0) {
+      // Try another symbol
+      const res2 = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy?order=analysis_date.desc&limit=5`, { headers });
+      const data2 = await res2.json();
+      
+      if (data2.length === 0) {
+        log(`<p class="warn">⚠️ Chưa có dữ liệu trong bảng trading_strategy.</p>
+             <p>Hãy mở file <strong>sync-trading-strategy.html</strong> và click "Bắt đầu Sync".</p>`);
+        return;
+      }
+      
+      log(`<p class="success">✅ Có ${data2.length} records. Ví dụ:</p><pre>${JSON.stringify(data2[0], null, 2)}</pre>`);
+      return;
+    }
+    
+    const d = data[0];
+    let html = `<h3 class="success">✅ Dữ liệu HPG:</h3>`;
+    html += `<table>
+      <tr><th>Trường</th><th>Giá trị</th></tr>
+      <tr><td>Symbol</td><td>${d.symbol}</td></tr>
+      <tr><td>Ngày phân tích</td><td>${d.analysis_date}</td></tr>
+      <tr><td>Vùng mua</td><td>${d.buy_zone_low?.toLocaleString()} - ${d.buy_zone_high?.toLocaleString()}</td></tr>
+      <tr><td>Độ mạnh vùng mua</td><td>${d.buy_zone_strength || '<em class="warn">chưa có</em>'}</td></tr>
+      <tr><td>Cắt lỗ</td><td>${d.stop_loss?.toLocaleString()}</td></tr>
+      <tr><td>% Cắt lỗ</td><td>${d.stop_loss_percent ? d.stop_loss_percent + '%' : '<em class="warn">chưa có</em>'}</td></tr>
+      <tr><td>Mục tiêu 1</td><td>${d.target_1?.toLocaleString()}</td></tr>
+      <tr><td>R:R Mục tiêu 1</td><td>${d.target_1_rr || '<em class="warn">chưa có</em>'}</td></tr>
+      <tr><td>Mục tiêu 2</td><td>${d.target_2?.toLocaleString()}</td></tr>
+      <tr><td>R:R Mục tiêu 2</td><td>${d.target_2_rr || '<em class="warn">chưa có</em>'}</td></tr>
+      <tr><td>Chiến lược</td><td>${d.strategy_type}</td></tr>
+      <tr><td>Độ tin cậy</td><td>${d.confidence ? d.confidence + '%' : '<em class="warn">chưa có</em>'}</td></tr>
+    </table>`;
+    
+    // Check if new columns have data
+    const hasNewData = d.buy_zone_strength && d.stop_loss_percent && d.target_1_rr;
+    
+    if (!hasNewData) {
+      html += `<p class="warn">⚠️ Dữ liệu cũ - thiếu các trường mới. Cần chạy lại sync!</p>`;
+    } else {
+      html += `<p class="success">✅ Dữ liệu đầy đủ các trường mới!</p>`;
+    }
+    
+    log(html);
+    
+  } catch (err) {
+    log(`<p class="error">❌ Error: ${err.message}</p>`);
+  }
+}
+
+async function checkNewColumns() {
+  log('<p>Đang kiểm tra các cột mới...</p>');
+  
+  const newCols = [
+    { name: 'buy_zone_optimal', type: 'DECIMAL(12,2)' },
+    { name: 'buy_zone_strength', type: 'VARCHAR(20)' },
+    { name: 'stop_loss_percent', type: 'DECIMAL(5,2)' },
+    { name: 'stop_loss_type', type: 'VARCHAR(30)' },
+    { name: 'target_1_percent', type: 'DECIMAL(5,2)' },
+    { name: 'target_1_rr', type: 'DECIMAL(4,2)' },
+    { name: 'target_2_percent', type: 'DECIMAL(5,2)' },
+    { name: 'target_2_rr', type: 'DECIMAL(4,2)' },
+    { name: 'target_3_percent', type: 'DECIMAL(5,2)' },
+    { name: 'target_3_rr', type: 'DECIMAL(4,2)' },
+    { name: 'confidence', type: 'DECIMAL(5,2)' }
+  ];
+  
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy?limit=1`, { headers });
+    const data = await res.json();
+    
+    if (data.length === 0) {
+      log(`<p class="warn">⚠️ Bảng trống, không thể kiểm tra cột.</p>`);
+      return;
+    }
+    
+    const existingCols = Object.keys(data[0]);
+    
+    let html = '<h3>Kiểm tra các cột mới cần thiết:</h3><table><tr><th>Cột</th><th>Trạng thái</th></tr>';
+    
+    let missingCols = [];
+    newCols.forEach(col => {
+      const exists = existingCols.includes(col.name);
+      html += `<tr><td>${col.name}</td><td class="${exists ? 'success' : 'error'}">${exists ? '✅ Có' : '❌ Thiếu'}</td></tr>`;
+      if (!exists) missingCols.push(col);
+    });
+    
+    html += '</table>';
+    
+    if (missingCols.length > 0) {
+      html += `<h3 class="warn">⚠️ Cần thêm ${missingCols.length} cột. Chạy SQL sau trong Supabase:</h3>`;
+      html += '<pre>';
+      missingCols.forEach(col => {
+        html += `ALTER TABLE trading_strategy ADD COLUMN IF NOT EXISTS ${col.name} ${col.type};\n`;
+      });
+      html += '</pre>';
+    } else {
+      html += `<p class="success">✅ Tất cả cột mới đã có! Bạn có thể chạy sync-trading-strategy.html để cập nhật dữ liệu.</p>`;
+    }
+    
+    log(html);
+    
+  } catch (err) {
+    log(`<p class="error">❌ Error: ${err.message}</p>`);
+  }
+}
+
+// Auto check on load
+checkTable();
+</script>
+</body>
+</html>

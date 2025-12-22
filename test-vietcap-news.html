@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Vietcap AI News API</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+    pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+    .btn { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; margin: 5px; }
+    .btn:hover { background: #2563eb; }
+    #log { height: 400px; overflow-y: auto; }
+    .news-item { background: #0f172a; padding: 12px; margin: 8px 0; border-radius: 8px; border-left: 3px solid #3b82f6; }
+    .positive { border-left-color: #10b981; }
+    .negative { border-left-color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Vietcap AI News API Research</h1>
+  
+  <div class="card">
+    <h3>API Endpoints to Test</h3>
+    <button class="btn" onclick="testMainAPI()">Test Main API</button>
+    <button class="btn" onclick="testNewsAPI()">Test News List</button>
+    <button class="btn" onclick="testStockNews('HPG')">Test HPG News</button>
+    <button class="btn" onclick="testStockNews('MSN')">Test MSN News</button>
+  </div>
+  
+  <div class="card">
+    <h3>📋 Results</h3>
+    <div id="log"></div>
+  </div>
+  
+  <div class="card">
+    <h3>📰 News Preview</h3>
+    <div id="newsPreview"></div>
+  </div>
+
+<script>
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  const color = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#22d3ee';
+  el.innerHTML += `<div style="color:${color}">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function showNews(news) {
+  const el = document.getElementById('newsPreview');
+  el.innerHTML = news.map(n => `
+    <div class="news-item ${n.sentiment || ''}">
+      <div style="font-weight:bold;margin-bottom:5px;">${n.title || n.headline}</div>
+      <div style="font-size:12px;color:#94a3b8;">
+        ${n.source || 'Unknown'} • ${n.publishedAt || n.date || 'N/A'} • ${n.symbol || 'Market'}
+      </div>
+      ${n.summary ? `<div style="margin-top:8px;font-size:13px;">${n.summary}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// Test different API endpoints
+async function testMainAPI() {
+  log('Testing Vietcap main page...', 'info');
+  
+  // The page uses Next.js, so we need to find the API endpoints
+  // Common patterns for Vietnamese stock news APIs
+  const endpoints = [
+    'https://trading.vietcap.com.vn/api/news',
+    'https://trading.vietcap.com.vn/api/ai-news',
+    'https://api.vietcap.com.vn/news',
+    'https://trading.vietcap.com.vn/_next/data/news',
+  ];
+  
+  for (const url of endpoints) {
+    try {
+      log(`Trying: ${url}`, 'info');
+      const res = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0'
+        }
+      });
+      log(`Response: ${res.status} ${res.statusText}`, res.ok ? 'success' : 'error');
+      if (res.ok) {
+        const data = await res.json();
+        log(`Data: ${JSON.stringify(data).substring(0, 200)}...`, 'success');
+      }
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    }
+  }
+}
+
+async function testNewsAPI() {
+  log('Testing Vietcap News API patterns...', 'info');
+  
+  // Try GraphQL endpoint (common for Next.js apps)
+  const graphqlEndpoints = [
+    'https://trading.vietcap.com.vn/graphql',
+    'https://api.vietcap.com.vn/graphql',
+  ];
+  
+  for (const url of graphqlEndpoints) {
+    try {
+      log(`Trying GraphQL: ${url}`, 'info');
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `{ news { items { title source publishedAt } } }`
+        })
+      });
+      log(`Response: ${res.status}`, res.ok ? 'success' : 'error');
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    }
+  }
+  
+  // Try REST API patterns
+  const restEndpoints = [
+    'https://trading.vietcap.com.vn/api/price/news/ai-news?exchange=hose&page=1&size=20',
+    'https://bgapidatafeed.vps.com.vn/getnewsbystock/HPG',
+    'https://api.simplize.vn/api/company/news/list?ticker=HPG&page=0&size=10',
+  ];
+  
+  for (const url of restEndpoints) {
+    try {
+      log(`Trying REST: ${url}`, 'info');
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+      log(`Response: ${res.status}`, res.ok ? 'success' : 'error');
+      if (res.ok) {
+        const text = await res.text();
+        log(`Data preview: ${text.substring(0, 300)}...`, 'success');
+        try {
+          const data = JSON.parse(text);
+          if (Array.isArray(data) && data.length > 0) {
+            showNews(data.slice(0, 5));
+          } else if (data.data && Array.isArray(data.data)) {
+            showNews(data.data.slice(0, 5));
+          }
+        } catch (e) {}
+      }
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    }
+  }
+}
+
+async function testStockNews(symbol) {
+  log(`Testing news for ${symbol}...`, 'info');
+  
+  const endpoints = [
+    `https://api.simplize.vn/api/company/news/list?ticker=${symbol}&page=0&size=20`,
+    `https://bgapidatafeed.vps.com.vn/getnewsbystock/${symbol}`,
+    `https://finfo-api.vndirect.com.vn/v4/news?q=code:${symbol}&size=20&sort=newsDate:desc`,
+  ];
+  
+  for (const url of endpoints) {
+    try {
+      log(`Trying: ${url}`, 'info');
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+      log(`Response: ${res.status}`, res.ok ? 'success' : 'error');
+      if (res.ok) {
+        const data = await res.json();
+        log(`Got data: ${JSON.stringify(data).substring(0, 500)}`, 'success');
+        
+        // Parse different response formats
+        let news = [];
+        if (Array.isArray(data)) {
+          news = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          news = data.data;
+        } else if (data.items && Array.isArray(data.items)) {
+          news = data.items;
+        }
+        
+        if (news.length > 0) {
+          log(`Found ${news.length} news items!`, 'success');
+          showNews(news.slice(0, 10));
+          return;
+        }
+      }
+    } catch (e) {
+      log(`Error: ${e.message}`, 'error');
+    }
+  }
+}
+
+log('Ready! Click buttons to test APIs.', 'success');
+</script>
+</body>
+</html>

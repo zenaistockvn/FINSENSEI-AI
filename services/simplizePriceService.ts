@@ -1,7 +1,9 @@
 /**
- * Stock Price Service - Lấy giá cổ phiếu realtime từ TCBS API (miễn phí)
- * Fallback: SSI iBoard API
+ * Simplize Price Service - Lấy giá cổ phiếu từ Simplize API
+ * Ưu tiên lấy từ database đã sync, fallback sang API trực tiếp
  */
+
+import { getSimplizeCompanyData } from './supabaseClient';
 
 export interface StockPrice {
   symbol: string;
@@ -38,140 +40,130 @@ export interface StockSummary {
 }
 
 /**
- * Lấy giá realtime từ TCBS API (miễn phí, không cần API key)
+ * Lấy giá từ Simplize API trực tiếp
  */
-export async function getSimplizePrice(symbol: string): Promise<StockPrice | null> {
+async function fetchSimplizeAPI(symbol: string): Promise<StockPrice | null> {
   try {
-    // Sử dụng TCBS API - miễn phí và ổn định
     const response = await fetch(
-      `https://apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/${symbol.toUpperCase()}/overview`
+      `https://api.simplize.vn/api/company/summary/${symbol.toLowerCase()}`
     );
     
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const d = await response.json();
-    
-    if (!d || !d.ticker) {
       return null;
     }
     
-    // TCBS trả về giá đã nhân 1000, cần chia lại
-    const currentPrice = d.price || d.closePrice || 0;
-    const refPrice = d.refPrice || d.referencePrice || currentPrice;
-    const netChange = currentPrice - refPrice;
-    const pctChange = refPrice > 0 ? (netChange / refPrice) * 100 : 0;
-    
-    return {
-      symbol: symbol.toUpperCase(),
-      price: currentPrice,
-      change: netChange,
-      changePercent: pctChange,
-      open: d.openPrice || d.open || currentPrice,
-      high: d.highPrice || d.high || currentPrice,
-      low: d.lowPrice || d.low || currentPrice,
-      volume: d.volume || d.totalVolume || 0,
-      value: d.value || d.totalValue || 0,
-      ceiling: d.ceilingPrice || d.ceiling || 0,
-      floor: d.floorPrice || d.floor || 0,
-      reference: refPrice,
-      avgPrice: d.avgPrice || currentPrice,
-      foreignBuy: d.foreignBuyVolume || d.foreignBuy || 0,
-      foreignSell: d.foreignSellVolume || d.foreignSell || 0,
-      updatedAt: new Date().toISOString(),
-    };
-  } catch (error) {
-    console.error(`Error fetching TCBS price for ${symbol}:`, error);
-    // Fallback to SSI API
-    return getSSIPrice(symbol);
-  }
-}
-
-/**
- * Fallback: Lấy giá từ SSI iBoard API
- */
-async function getSSIPrice(symbol: string): Promise<StockPrice | null> {
-  try {
-    const response = await fetch(
-      `https://iboard.ssi.com.vn/dchart/api/1.1/defaultSettings?code=${symbol.toUpperCase()}`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const d = data?.data;
+    const result = await response.json();
+    const d = result.data;
     
     if (!d) {
       return null;
     }
     
-    const currentPrice = d.lastPrice || d.price || 0;
-    const refPrice = d.refPrice || d.reference || currentPrice;
-    const netChange = currentPrice - refPrice;
-    const pctChange = refPrice > 0 ? (netChange / refPrice) * 100 : 0;
-    
     return {
       symbol: symbol.toUpperCase(),
-      price: currentPrice,
-      change: netChange,
-      changePercent: pctChange,
-      open: d.openPrice || d.open || currentPrice,
-      high: d.highPrice || d.high || currentPrice,
-      low: d.lowPrice || d.low || currentPrice,
-      volume: d.totalVolume || d.volume || 0,
-      value: d.totalValue || d.value || 0,
+      price: d.price || d.closePrice || 0,
+      change: d.netChange || d.change || 0,
+      changePercent: d.pctChange || d.changePercent || 0,
+      open: d.openPrice || d.open || 0,
+      high: d.highPrice || d.high || 0,
+      low: d.lowPrice || d.low || 0,
+      volume: d.volume || 0,
+      value: d.value || 0,
       ceiling: d.ceilingPrice || d.ceiling || 0,
       floor: d.floorPrice || d.floor || 0,
-      reference: refPrice,
-      avgPrice: d.avgPrice || currentPrice,
-      foreignBuy: d.foreignBuyVolume || 0,
-      foreignSell: d.foreignSellVolume || 0,
+      reference: d.refPrice || d.referencePrice || 0,
+      avgPrice: d.avgPrice || d.price || 0,
+      foreignBuy: 0,
+      foreignSell: 0,
       updatedAt: new Date().toISOString(),
     };
   } catch (error) {
-    console.error(`Error fetching SSI price for ${symbol}:`, error);
+    console.error(`Error fetching Simplize API for ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * Lấy thông tin tổng quan từ TCBS API
+ * Lấy giá từ database Supabase (đã sync từ Simplize API)
+ * Trong giờ giao dịch: ưu tiên API trực tiếp để có giá realtime
+ * Ngoài giờ: lấy từ database
+ */
+export async function getSimplizePrice(symbol: string): Promise<StockPrice | null> {
+  try {
+    const now = new Date();
+    const hour = now.getHours();
+    const day = now.getDay();
+    const isMarketHours = day >= 1 && day <= 5 && hour >= 9 && hour < 15;
+    
+    // Trong giờ giao dịch: ưu tiên API để có giá realtime
+    if (isMarketHours) {
+      const apiPrice = await fetchSimplizeAPI(symbol);
+      if (apiPrice) {
+        console.log(`[Realtime] ${symbol}: ${apiPrice.price.toLocaleString()} (${apiPrice.changePercent > 0 ? '+' : ''}${apiPrice.changePercent.toFixed(2)}%)`);
+        return apiPrice;
+      }
+    }
+    
+    // Ngoài giờ hoặc API fail: lấy từ database đã sync
+    const data = await getSimplizeCompanyData(symbol.toUpperCase());
+    
+    if (data && data.price_close > 0) {
+      return {
+        symbol: symbol.toUpperCase(),
+        price: data.price_close || 0,
+        change: data.net_change || 0,
+        changePercent: data.pct_change || 0,
+        open: data.price_open || data.price_close || 0,
+        high: data.price_high || data.price_close || 0,
+        low: data.price_low || data.price_close || 0,
+        volume: data.volume || 0,
+        value: 0,
+        ceiling: data.price_ceiling || 0,
+        floor: data.price_floor || 0,
+        reference: data.price_reference || data.price_close || 0,
+        avgPrice: data.price_close || 0,
+        foreignBuy: 0,
+        foreignSell: 0,
+        updatedAt: data.updated_at || new Date().toISOString(),
+      };
+    }
+    
+    // Fallback sang API trực tiếp
+    console.log(`No DB data for ${symbol}, fetching from Simplize API...`);
+    return fetchSimplizeAPI(symbol);
+  } catch (error) {
+    console.error(`Error fetching price for ${symbol}:`, error);
+    return fetchSimplizeAPI(symbol);
+  }
+}
+
+/**
+ * Lấy thông tin tổng quan từ database
  */
 export async function getSimplizeSummary(symbol: string): Promise<StockSummary | null> {
   try {
-    const response = await fetch(
-      `https://apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/${symbol.toUpperCase()}/overview`
-    );
+    const data = await getSimplizeCompanyData(symbol.toUpperCase());
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const d = await response.json();
-    
-    if (!d || !d.ticker) {
+    if (!data) {
       return null;
     }
     
     return {
       symbol: symbol.toUpperCase(),
-      name: d.shortName || d.companyName || '',
-      exchange: d.exchange || 'HOSE',
-      industry: d.industryName || d.industry || '',
-      marketCap: d.marketCap || 0,
-      pe: d.pe || d.PE || 0,
-      pb: d.pb || d.PB || 0,
-      eps: d.eps || d.EPS || 0,
-      roe: d.roe || d.ROE || 0,
-      roa: d.roa || d.ROA || 0,
-      dividendYield: d.dividend || d.dividendYield || 0,
-      beta: d.beta || 0,
+      name: data.name_vi || '',
+      exchange: data.stock_exchange || 'HOSE',
+      industry: data.industry || '',
+      marketCap: data.market_cap || 0,
+      pe: data.pe_ratio || 0,
+      pb: data.pb_ratio || 0,
+      eps: data.eps || 0,
+      roe: data.roe || 0,
+      roa: data.roa || 0,
+      dividendYield: data.dividend_yield || 0,
+      beta: data.beta_5y || 0,
     };
   } catch (error) {
-    console.error(`Error fetching TCBS summary for ${symbol}:`, error);
+    console.error(`Error fetching summary for ${symbol}:`, error);
     return null;
   }
 }
@@ -182,7 +174,6 @@ export async function getSimplizeSummary(symbol: string): Promise<StockSummary |
 export async function getMultipleSimplizePrices(symbols: string[]): Promise<Map<string, StockPrice>> {
   const results = new Map<string, StockPrice>();
   
-  // Fetch in parallel with limit
   const batchSize = 5;
   for (let i = 0; i < symbols.length; i += batchSize) {
     const batch = symbols.slice(i, i + batchSize);

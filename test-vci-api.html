@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test VCI API</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a2e; color: #fff; }
+        .section { margin: 20px 0; padding: 15px; background: #16213e; border-radius: 8px; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        pre { background: #0f0f23; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; max-height: 300px; }
+        h2 { color: #22d3ee; margin-bottom: 10px; }
+        button { padding: 10px 20px; background: #6366f1; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #4f46e5; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test VCI API Endpoints</h1>
+    <p>Testing various VCI API endpoints for stock data...</p>
+    
+    <div>
+        <button onclick="testAllAPIs()">Test All APIs</button>
+        <button onclick="testHistoryAPI()">Test History API</button>
+        <button onclick="testRealtimeAPI()">Test Realtime API</button>
+    </div>
+    
+    <div id="results"></div>
+
+    <script>
+        const symbol = 'HPG';
+        
+        // Format date
+        function formatDate(d) {
+            return d.toISOString().split('T')[0];
+        }
+        
+        // Get date range
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+
+        // Test VCI GraphQL API - Stock History
+        async function testVCIGraphQL() {
+            const url = 'https://api.vietcap.com.vn/data-mt/graphql';
+            const query = {
+                query: `
+                    query stockPrice($symbol: String!, $from: String!, $to: String!) {
+                        stockPrice(symbol: $symbol, from: $from, to: $to) {
+                            date
+                            open
+                            high
+                            low
+                            close
+                            volume
+                        }
+                    }
+                `,
+                variables: {
+                    symbol: symbol,
+                    from: formatDate(startDate),
+                    to: formatDate(endDate)
+                }
+            };
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+                return { success: response.ok, data: await response.json(), endpoint: 'VCI GraphQL stockPrice' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'VCI GraphQL stockPrice' };
+            }
+        }
+
+        // Test VCI GraphQL API - Stock Realtime
+        async function testVCIRealtime() {
+            const url = 'https://api.vietcap.com.vn/data-mt/graphql';
+            const query = {
+                query: `
+                    query stockRealtime($symbol: String!) {
+                        stockRealtime(symbol: $symbol) {
+                            symbol
+                            price
+                            change
+                            percentChange
+                            open
+                            high
+                            low
+                            volume
+                            refPrice
+                        }
+                    }
+                `,
+                variables: { symbol: symbol }
+            };
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+                return { success: response.ok, data: await response.json(), endpoint: 'VCI GraphQL stockRealtime' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'VCI GraphQL stockRealtime' };
+            }
+        }
+
+        // Test VCI REST API - Stock History (alternative)
+        async function testVCIREST() {
+            const url = `https://api.vietcap.com.vn/data-mt/stock/${symbol}/history?from=${formatDate(startDate)}&to=${formatDate(endDate)}`;
+            
+            try {
+                const response = await fetch(url);
+                return { success: response.ok, data: await response.json(), endpoint: 'VCI REST history' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'VCI REST history' };
+            }
+        }
+
+        // Test Cafef API
+        async function testCafef() {
+            const url = `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${symbol}&StartDate=&EndDate=&PageIndex=1&PageSize=30`;
+            
+            try {
+                const response = await fetch(url);
+                return { success: response.ok, data: await response.json(), endpoint: 'Cafef PriceHistory' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'Cafef PriceHistory' };
+            }
+        }
+
+        // Test Simplize API
+        async function testSimplize() {
+            const url = `https://api.simplize.vn/api/company/summary/${symbol.toLowerCase()}`;
+            
+            try {
+                const response = await fetch(url);
+                return { success: response.ok, data: await response.json(), endpoint: 'Simplize summary' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'Simplize summary' };
+            }
+        }
+
+        // Test VCI Intraday
+        async function testVCIIntraday() {
+            const url = 'https://api.vietcap.com.vn/data-mt/graphql';
+            const query = {
+                query: `
+                    query stockIntraday($symbol: String!) {
+                        stockIntraday(symbol: $symbol) {
+                            time
+                            price
+                            volume
+                        }
+                    }
+                `,
+                variables: { symbol: symbol }
+            };
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(query)
+                });
+                return { success: response.ok, data: await response.json(), endpoint: 'VCI GraphQL stockIntraday' };
+            } catch (e) {
+                return { success: false, error: e.message, endpoint: 'VCI GraphQL stockIntraday' };
+            }
+        }
+
+        async function testHistoryAPI() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing History APIs...</p>';
+            
+            let html = '';
+            
+            // Test VCI GraphQL
+            const vci = await testVCIGraphQL();
+            html += renderResult(vci);
+            
+            // Test Cafef
+            const cafef = await testCafef();
+            html += renderResult(cafef);
+            
+            results.innerHTML = html;
+        }
+
+        async function testRealtimeAPI() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing Realtime APIs...</p>';
+            
+            let html = '';
+            
+            // Test VCI Realtime
+            const vciRealtime = await testVCIRealtime();
+            html += renderResult(vciRealtime);
+            
+            // Test VCI Intraday
+            const vciIntraday = await testVCIIntraday();
+            html += renderResult(vciIntraday);
+            
+            // Test Simplize
+            const simplize = await testSimplize();
+            html += renderResult(simplize);
+            
+            results.innerHTML = html;
+        }
+
+        async function testAllAPIs() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Testing all APIs...</p>';
+            
+            let html = '';
+            
+            // Test all
+            const tests = [
+                testVCIGraphQL(),
+                testVCIRealtime(),
+                testVCIIntraday(),
+                testCafef(),
+                testSimplize()
+            ];
+            
+            const allResults = await Promise.all(tests);
+            allResults.forEach(r => {
+                html += renderResult(r);
+            });
+            
+            results.innerHTML = html;
+        }
+
+        function renderResult(result) {
+            const statusClass = result.success ? 'success' : 'error';
+            const statusIcon = result.success ? '✅' : '❌';
+            
+            let dataPreview = '';
+            if (result.data) {
+                // Show first few records if array
+                const preview = JSON.stringify(result.data, null, 2);
+                dataPreview = `<pre>${preview.substring(0, 2000)}${preview.length > 2000 ? '...' : ''}</pre>`;
+            }
+            if (result.error) {
+                dataPreview = `<pre class="error">${result.error}</pre>`;
+            }
+            
+            return `
+                <div class="section">
+                    <h2>${statusIcon} ${result.endpoint}</h2>
+                    <p class="${statusClass}">Status: ${result.success ? 'SUCCESS' : 'FAILED'}</p>
+                    ${dataPreview}
+                </div>
+            `;
+        }
+
+        // Auto test on load
+        testAllAPIs();
+    </script>
+</body>
+</html>

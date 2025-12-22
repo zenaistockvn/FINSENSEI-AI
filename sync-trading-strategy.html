@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Trading Strategy - VN100</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #e2e8f0; min-height: 100vh; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; margin-bottom: 20px; background: linear-gradient(90deg, #22d3ee, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .card { background: rgba(30, 41, 59, 0.8); border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); }
+    .btn { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; transition: all 0.3s; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    #log { background: #0f172a; border-radius: 8px; padding: 15px; height: 400px; overflow-y: auto; font-family: 'Fira Code', monospace; font-size: 13px; line-height: 1.6; }
+    .log-info { color: #22d3ee; }
+    .log-success { color: #10b981; }
+    .log-error { color: #ef4444; }
+    .log-warn { color: #f59e0b; }
+    .progress { background: #1e293b; border-radius: 8px; height: 8px; margin: 15px 0; overflow: hidden; }
+    .progress-bar { background: linear-gradient(90deg, #22d3ee, #a78bfa); height: 100%; transition: width 0.3s; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 15px; }
+    .stat { background: rgba(15, 23, 42, 0.6); padding: 15px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #22d3ee; }
+    .stat-label { font-size: 12px; color: #94a3b8; margin-top: 5px; }
+    .sample { background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 8px; padding: 15px; margin-top: 15px; }
+    .sample h4 { color: #22d3ee; margin-bottom: 10px; }
+    .sample-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .sample-label { color: #94a3b8; }
+    .sample-value { color: #e2e8f0; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 Sync Trading Strategy</h1>
+    
+    <div class="card">
+      <p style="margin-bottom: 15px; color: #94a3b8;">Tính toán và đồng bộ chiến lược giao dịch cho tất cả cổ phiếu VN100 (Buy Zone, Stop Loss, Targets, R:R ratio)</p>
+      <button class="btn" id="syncBtn" onclick="startSync()">🚀 Bắt đầu Sync</button>
+      <div class="progress"><div class="progress-bar" id="progressBar" style="width: 0%"></div></div>
+      <div class="stats">
+        <div class="stat"><div class="stat-value" id="totalCount">0</div><div class="stat-label">Tổng cổ phiếu</div></div>
+        <div class="stat"><div class="stat-value" id="successCount">0</div><div class="stat-label">Thành công</div></div>
+        <div class="stat"><div class="stat-value" id="errorCount">0</div><div class="stat-label">Lỗi</div></div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h3 style="margin-bottom: 10px;">📋 Log</h3>
+      <div id="log"></div>
+    </div>
+    
+    <div class="card" id="sampleCard" style="display: none;">
+      <h3 style="margin-bottom: 10px;">📊 Ví dụ kết quả</h3>
+      <div id="sampleResult"></div>
+    </div>
+  </div>
+
+<script>
+const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+const headers = {
+  "apikey": SUPABASE_ANON_KEY,
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+  "Content-Type": "application/json"
+};
+
+let successCount = 0, errorCount = 0, totalCount = 0;
+
+function log(msg, type = 'info') {
+  const logEl = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  logEl.innerHTML += `<div class="log-${type}">[${time}] ${msg}</div>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function updateStats() {
+  document.getElementById('totalCount').textContent = totalCount;
+  document.getElementById('successCount').textContent = successCount;
+  document.getElementById('errorCount').textContent = errorCount;
+}
+
+function updateProgress(current, total) {
+  const pct = Math.round((current / total) * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+// Vietnam Market Constants
+const VN_MARKET = {
+  PRICE_LIMIT: { HOSE: 0.07, HNX: 0.10, UPCOM: 0.15 },
+  TICK_SIZE: { UNDER_10K: 10, FROM_10K_TO_50K: 50, ABOVE_50K: 100 },
+  TRADING_COST: { BUY_FEE: 0.0015, SELL_FEE: 0.0015, SELL_TAX: 0.001 }
+};
+
+function roundVNPrice(price) {
+  if (price < 10000) return Math.round(price / 10) * 10;
+  if (price < 50000) return Math.round(price / 50) * 50;
+  return Math.round(price / 100) * 100;
+}
+
+// Calculation functions
+function findSwingHighs(highs, period = 5) {
+  const swings = [];
+  for (let i = period; i < highs.length - period; i++) {
+    const leftMax = Math.max(...highs.slice(i - period, i));
+    const rightMax = Math.max(...highs.slice(i + 1, i + period + 1));
+    if (highs[i] >= leftMax && highs[i] >= rightMax) swings.push(highs[i]);
+  }
+  return swings;
+}
+
+function findSwingLows(lows, period = 5) {
+  const swings = [];
+  for (let i = period; i < lows.length - period; i++) {
+    const leftMin = Math.min(...lows.slice(i - period, i));
+    const rightMin = Math.min(...lows.slice(i + 1, i + period + 1));
+    if (lows[i] <= leftMin && lows[i] <= rightMin) swings.push(lows[i]);
+  }
+  return swings;
+}
+
+function clusterLevels(levels, threshold = 0.02) {
+  if (levels.length === 0) return [];
+  const sorted = [...levels].sort((a, b) => a - b);
+  const clusters = [];
+  let current = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if ((sorted[i] - sorted[i-1]) / sorted[i-1] <= threshold) {
+      current.push(sorted[i]);
+    } else {
+      clusters.push(current);
+      current = [sorted[i]];
+    }
+  }
+  clusters.push(current);
+  return clusters.map(c => c.reduce((a, b) => a + b, 0) / c.length).sort((a, b) => b - a);
+}
+
+function calculateATR(prices, period = 14) {
+  if (prices.length < period + 1) return 0;
+  const tr = [];
+  for (let i = 1; i < prices.length; i++) {
+    tr.push(Math.max(
+      prices[i].high_price - prices[i].low_price,
+      Math.abs(prices[i].high_price - prices[i-1].close_price),
+      Math.abs(prices[i].low_price - prices[i-1].close_price)
+    ));
+  }
+  return tr.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateSMA(data, period) {
+  if (data.length < period) return null;
+  return data.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateTradingStrategy(symbol, prices, techIndicators) {
+  if (!prices || prices.length < 30) return null;
+  
+  const sorted = [...prices].sort((a, b) => new Date(a.trading_date) - new Date(b.trading_date));
+  const n = sorted.length;
+  const currentPrice = sorted[n-1].close_price;
+  const closes = sorted.map(p => p.close_price);
+  const highs = sorted.map(p => p.high_price);
+  const lows = sorted.map(p => p.low_price);
+  
+  const atr = calculateATR(sorted, 14);
+  const ma20 = techIndicators?.ma20 || calculateSMA(closes, 20);
+  const ma50 = techIndicators?.ma50 || calculateSMA(closes, 50);
+  const rsi = techIndicators?.rsi_14 || null;
+  const volatility = techIndicators?.volatility_20d || (atr / currentPrice) * 100;
+  
+  // Support/Resistance
+  const swingHighs = findSwingHighs(highs, 5);
+  const swingLows = findSwingLows(lows, 5);
+  const clusteredHighs = clusterLevels(swingHighs);
+  const clusteredLows = clusterLevels(swingLows);
+  
+  const supports = clusteredLows.filter(l => l < currentPrice).slice(0, 2);
+  const resistances = clusteredHighs.filter(h => h > currentPrice).slice(-2).reverse();
+  
+  const support1 = supports[0] || currentPrice * 0.95;
+  const support2 = supports[1] || support1 * 0.97;
+  const resistance1 = resistances[0] || currentPrice * 1.05;
+  const resistance2 = resistances[1] || resistance1 * 1.05;
+  
+  const high52w = Math.max(...highs.slice(-252));
+  
+  // Buy Zone - MỞ RỘNG cho T+2.5
+  let buyLow = support1 - (atr * 0.3);  // Thêm buffer dưới support
+  let buyHigh = support1 + (atr * 0.8);  // Tăng từ 0.5 lên 0.8
+  const isUptrend = ma50 ? currentPrice > ma50 : false;
+  const isPullback = ma20 && ma50 ? (currentPrice < ma20 && currentPrice > ma50) : false;
+  
+  if (isUptrend && isPullback && ma20) {
+    buyLow = Math.max(ma20 - (atr * 0.5), support1 - (atr * 0.3));
+    buyHigh = ma20 + (atr * 0.3);
+  }
+  if (rsi && rsi < 35) buyHigh += atr * 0.5;  // Tăng từ 0.3 lên 0.5
+  if (buyHigh > currentPrice) buyHigh = currentPrice - (atr * 0.15);
+  if (buyLow > buyHigh) buyLow = buyHigh - (atr * 0.8);
+  
+  // Kiểm tra giá sàn (HOSE -7%)
+  const floorPrice = currentPrice * 0.93;
+  if (buyLow < floorPrice) buyLow = floorPrice;
+  
+  let buyStrength = 'MODERATE';
+  if (rsi && rsi < 35 && currentPrice <= support1 * 1.03) buyStrength = 'STRONG';
+  else if (ma20 && currentPrice > ma20 && currentPrice > support1 * 1.08) buyStrength = 'WEAK';
+  
+  // Stop Loss - Max 8% cho VN với T+2.5 (tăng từ 5%)
+  let atrMult = volatility > 3 ? 2.5 : volatility < 1.5 ? 1.5 : 1.8;  // Tăng ATR multiplier
+  const entryPrice = (buyLow + buyHigh) / 2;
+  let stopLoss = entryPrice - (atr * atrMult);
+  const supportStop = support2 - (atr * 0.5);  // Tăng buffer từ 0.3 lên 0.5
+  const maxStop = entryPrice * 0.92;  // Max 8% loss (tăng từ 5%)
+  
+  let stopType = 'ATR_BASED';
+  if (supportStop > stopLoss && supportStop < support1) {
+    stopLoss = supportStop;
+    stopType = 'SUPPORT_BASED';
+  }
+  if (stopLoss < maxStop) {
+    stopLoss = maxStop;
+    stopType = 'PERCENTAGE_BASED';
+  }
+  const stopPercent = ((entryPrice - stopLoss) / entryPrice) * 100;
+  
+  // Targets - R:R tối thiểu 1:3 cho VN
+  const risk = entryPrice - stopLoss;
+  const tradingCostPct = (VN_MARKET.TRADING_COST.BUY_FEE + VN_MARKET.TRADING_COST.SELL_FEE + VN_MARKET.TRADING_COST.SELL_TAX) * 100;
+  
+  // Target 1: R:R = 1:3 (tối thiểu) - Với stop 8%, target ~24%
+  let tp1 = entryPrice + (risk * 3);  // R:R 1:3
+  const minTarget1 = entryPrice * (1 + 0.20 + tradingCostPct / 100);  // Tối thiểu 20%
+  if (tp1 < minTarget1) tp1 = minTarget1;
+  // Chỉ dùng resistance nếu đạt R:R >= 3
+  if (resistance1 >= entryPrice + (risk * 3) && resistance1 < tp1) tp1 = resistance1;
+  
+  // Target 2: R:R = 1:4 - Với stop 8%, target ~32%
+  let tp2 = entryPrice + (risk * 4);  // R:R 1:4
+  if (tp2 < entryPrice * 1.30) tp2 = entryPrice * 1.30;  // Tối thiểu 30%
+  if (resistance2 >= entryPrice + (risk * 4) && resistance2 < tp2 && resistance2 > tp1) tp2 = resistance2;
+  
+  // Target 3: R:R = 1:5 hoặc 52w high - Với stop 8%, target ~40%
+  let tp3 = entryPrice + (risk * 5);  // R:R 1:5
+  if (high52w > tp3) tp3 = high52w;
+  if (tp3 < entryPrice * 1.40) tp3 = entryPrice * 1.40;  // Tối thiểu 40%
+  
+  const calcRR = (t) => Math.round(((t - entryPrice) / risk) * 10) / 10;
+  const calcPct = (t) => Math.round(((t - entryPrice) / entryPrice) * 1000) / 10;
+  
+  // Strategy Type - Phiên bản VN với R:R 1:3+
+  const targetPct = calcPct(tp1);
+  let strategyType = 'Swing Trung hạn';
+  let holdingPeriod = '2-4 tuần';
+  if (targetPct < 25) {
+    strategyType = 'Swing Ngắn hạn';
+    holdingPeriod = '1-2 tuần';
+  } else if (targetPct > 35) {
+    strategyType = 'Đầu tư Dài hạn';
+    holdingPeriod = '1-3 tháng';
+  }
+  
+  // Giá hòa vốn
+  const breakEvenPrice = roundVNPrice(entryPrice * (1 + tradingCostPct / 100));
+  
+  // Confidence - Tăng điểm cho R:R >= 3
+  let confidence = 50;
+  if (rsi && rsi < 35) confidence += 15;
+  if (rsi && rsi > 70) confidence -= 10;
+  if (ma20 && ma50 && ma20 > ma50) confidence += 10;
+  if (currentPrice <= support1 * 1.03) confidence += 10;
+  if (calcRR(tp1) >= 3) confidence += 10;  // Tăng điểm cho R:R >= 3
+  if (volatility > 4) confidence -= 5;
+  confidence = Math.max(20, Math.min(95, confidence));
+  
+  return {
+    symbol,
+    analysis_date: new Date().toISOString().split('T')[0],
+    buy_zone_low: roundVNPrice(buyLow),
+    buy_zone_high: roundVNPrice(buyHigh),
+    buy_zone_optimal: roundVNPrice(entryPrice),
+    buy_zone_strength: buyStrength,
+    stop_loss: roundVNPrice(stopLoss),
+    stop_loss_percent: Math.round(stopPercent * 100) / 100,
+    stop_loss_type: stopType,
+    target_1: roundVNPrice(tp1),
+    target_1_percent: calcPct(tp1),
+    target_1_rr: calcRR(tp1),
+    target_2: roundVNPrice(tp2),
+    target_2_percent: calcPct(tp2),
+    target_2_rr: calcRR(tp2),
+    target_3: roundVNPrice(tp3),
+    target_3_percent: calcPct(tp3),
+    target_3_rr: calcRR(tp3),
+    support_1: roundVNPrice(support1),
+    support_2: roundVNPrice(support2),
+    resistance_1: roundVNPrice(resistance1),
+    resistance_2: roundVNPrice(resistance2),
+    strategy_type: strategyType,
+    strategy_note: `${strategyType} - ${holdingPeriod} - R:R ${calcRR(tp1)}:1`,
+    confidence: confidence,
+    break_even_price: breakEvenPrice,
+    trading_cost_percent: Math.round(tradingCostPct * 100) / 100,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function showSample(strategy) {
+  document.getElementById('sampleCard').style.display = 'block';
+  document.getElementById('sampleResult').innerHTML = `
+    <div class="sample">
+      <h4>📈 ${strategy.symbol}</h4>
+      <div class="sample-row"><span class="sample-label">Vùng mua:</span><span class="sample-value">${strategy.buy_zone_low.toLocaleString()} - ${strategy.buy_zone_high.toLocaleString()} (${strategy.buy_zone_strength === 'STRONG' ? 'Mạnh' : strategy.buy_zone_strength === 'WEAK' ? 'Yếu' : 'TB'})</span></div>
+      <div class="sample-row"><span class="sample-label">Giá hòa vốn:</span><span class="sample-value">${strategy.break_even_price?.toLocaleString() || 'N/A'} (phí ~${strategy.trading_cost_percent}%)</span></div>
+      <div class="sample-row"><span class="sample-label">Cắt lỗ:</span><span class="sample-value">${strategy.stop_loss.toLocaleString()} (-${strategy.stop_loss_percent}%)</span></div>
+      <div class="sample-row"><span class="sample-label">Mục tiêu 1:</span><span class="sample-value">${strategy.target_1.toLocaleString()} (+${strategy.target_1_percent}%, R:R ${strategy.target_1_rr})</span></div>
+      <div class="sample-row"><span class="sample-label">Mục tiêu 2:</span><span class="sample-value">${strategy.target_2.toLocaleString()} (+${strategy.target_2_percent}%, R:R ${strategy.target_2_rr})</span></div>
+      <div class="sample-row"><span class="sample-label">Mục tiêu 3:</span><span class="sample-value">${strategy.target_3.toLocaleString()} (+${strategy.target_3_percent}%, R:R ${strategy.target_3_rr})</span></div>
+      <div class="sample-row"><span class="sample-label">Chiến lược:</span><span class="sample-value">${strategy.strategy_type}</span></div>
+      <div class="sample-row"><span class="sample-label">Độ tin cậy:</span><span class="sample-value">${strategy.confidence}%</span></div>
+    </div>
+  `;
+}
+
+async function startSync() {
+  const btn = document.getElementById('syncBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Đang xử lý...';
+  
+  successCount = 0;
+  errorCount = 0;
+  document.getElementById('log').innerHTML = '';
+  
+  try {
+    log('🚀 Bắt đầu sync Trading Strategy...', 'info');
+    
+    // Get companies
+    const compRes = await fetch(`${SUPABASE_URL}/rest/v1/companies?is_vn100=eq.true&is_active=eq.true&select=symbol`, { headers });
+    const companies = await compRes.json();
+    totalCount = companies.length;
+    updateStats();
+    log(`📊 Tìm thấy ${companies.length} cổ phiếu VN100`, 'info');
+    
+    const allStrategies = [];
+    
+    for (let i = 0; i < companies.length; i++) {
+      const { symbol } = companies[i];
+      try {
+        // Get prices
+        const priceRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices?symbol=eq.${symbol}&order=trading_date.desc&limit=300`, { headers });
+        const prices = await priceRes.json();
+        
+        // Get technical indicators
+        const techRes = await fetch(`${SUPABASE_URL}/rest/v1/technical_indicators?symbol=eq.${symbol}&order=calculation_date.desc&limit=1`, { headers });
+        const techData = await techRes.json();
+        const tech = techData[0] || null;
+        
+        if (prices.length < 30) {
+          log(`⚠️ ${symbol}: Không đủ dữ liệu (${prices.length} ngày)`, 'warn');
+          errorCount++;
+          updateStats();
+          continue;
+        }
+        
+        const strategy = calculateTradingStrategy(symbol, prices, tech);
+        if (!strategy) {
+          errorCount++;
+          updateStats();
+          continue;
+        }
+        
+        allStrategies.push(strategy);
+        successCount++;
+        updateStats();
+        updateProgress(i + 1, companies.length);
+        
+        if ((i + 1) % 10 === 0) {
+          log(`📈 Đã xử lý ${i + 1}/${companies.length}...`, 'info');
+        }
+        
+        await new Promise(r => setTimeout(r, 30));
+      } catch (err) {
+        log(`❌ ${symbol}: ${err.message}`, 'error');
+        errorCount++;
+        updateStats();
+      }
+    }
+    
+    // Upsert to database
+    if (allStrategies.length > 0) {
+      log(`💾 Đang lưu ${allStrategies.length} chiến lược vào database...`, 'info');
+      
+      for (let i = 0; i < allStrategies.length; i += 50) {
+        const batch = allStrategies.slice(i, i + 50);
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy`, {
+          method: 'POST',
+          headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+          body: JSON.stringify(batch)
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          log(`❌ Batch error: ${err}`, 'error');
+        } else {
+          log(`✅ Batch ${Math.floor(i / 50) + 1} saved`, 'success');
+        }
+      }
+      
+      // Show sample
+      const sample = allStrategies.find(s => s.symbol === 'HPG') || allStrategies[0];
+      showSample(sample);
+    }
+    
+    log(`\n✅ HOÀN THÀNH! Thành công: ${successCount}, Lỗi: ${errorCount}`, 'success');
+    
+  } catch (err) {
+    log(`❌ Error: ${err.message}`, 'error');
+  }
+  
+  btn.disabled = false;
+  btn.textContent = '🚀 Bắt đầu Sync';
+}
+</script>
+</body>
+</html>

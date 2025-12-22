@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Debug MSN Data - Check Supabase</title>
+  <style>
+    body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    h2 { color: #22d3ee; margin-bottom: 15px; }
+    .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #334155; }
+    .label { color: #94a3b8; }
+    .value { color: #e2e8f0; font-weight: 600; }
+    .good { color: #10b981; }
+    .bad { color: #ef4444; }
+    .warn { color: #f59e0b; }
+    .btn { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; }
+    pre { background: #0f172a; padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Debug MSN Data on Supabase</h1>
+  <button class="btn" onclick="checkData()">Check All Data</button>
+  <div id="result" style="margin-top: 20px;"></div>
+<script>
+const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+</script>
+</body>
+</html>
+
+<script>
+async function checkData() {
+  const symbol = 'MSN';
+  let html = '';
+  
+  try {
+    // 1. Check SENAI Analysis
+    const senaiRes = await fetch(`${SUPABASE_URL}/rest/v1/senai_analysis?symbol=eq.${symbol}&order=analysis_date.desc&limit=1`, { headers });
+    const senai = (await senaiRes.json())[0];
+    
+    html += `<div class="card"><h2>📊 SENAI Analysis</h2>`;
+    if (senai) {
+      html += `
+        <div class="row"><span class="label">Rating:</span><span class="value good">${senai.rating || 'N/A'}</span></div>
+        <div class="row"><span class="label">Score:</span><span class="value good">${senai.score || 'N/A'}</span></div>
+        <div class="row"><span class="label">Signal:</span><span class="value good">${senai.signal || 'N/A'}</span></div>
+        <div class="row"><span class="label">Recommendation:</span><span class="value">${senai.recommendation || 'N/A'}</span></div>
+        <div class="row"><span class="label">Analysis Date:</span><span class="value">${senai.analysis_date || 'N/A'}</span></div>`;
+    } else {
+      html += `<p class="bad">❌ Không có dữ liệu SENAI cho ${symbol}</p>`;
+    }
+    html += `</div>`;
+    
+    // 2. Check Trading Strategy
+    const strategyRes = await fetch(`${SUPABASE_URL}/rest/v1/trading_strategy?symbol=eq.${symbol}&order=analysis_date.desc&limit=1`, { headers });
+    const strategy = (await strategyRes.json())[0];
+    
+    html += `<div class="card"><h2>🎯 Trading Strategy</h2>`;
+    if (strategy) {
+      html += `
+        <div class="row"><span class="label">Strategy Type:</span><span class="value">${strategy.strategy_type || 'N/A'}</span></div>
+        <div class="row"><span class="label">Buy Zone:</span><span class="value good">${strategy.buy_zone_low?.toLocaleString()} - ${strategy.buy_zone_high?.toLocaleString()}</span></div>
+        <div class="row"><span class="label">Stop Loss:</span><span class="value bad">< ${strategy.stop_loss?.toLocaleString()} (${strategy.stop_loss_percent || 'N/A'}%)</span></div>
+        <div class="row"><span class="label">Target 1:</span><span class="value">${strategy.target_1?.toLocaleString()} (R:R ${strategy.target_1_rr || 'N/A'})</span></div>
+        <div class="row"><span class="label">Target 2:</span><span class="value">${strategy.target_2?.toLocaleString()} (R:R ${strategy.target_2_rr || 'N/A'})</span></div>
+        <div class="row"><span class="label">Target 3:</span><span class="value">${strategy.target_3?.toLocaleString()} (R:R ${strategy.target_3_rr || 'N/A'})</span></div>
+        <div class="row"><span class="label">Risk Profile:</span><span class="value">${strategy.risk_profile || 'N/A'}</span></div>
+        <div class="row"><span class="label">Confidence:</span><span class="value">${strategy.confidence || 'N/A'}%</span></div>
+        <div class="row"><span class="label">Analysis Date:</span><span class="value">${strategy.analysis_date || 'N/A'}</span></div>`;
+    } else {
+      html += `<p class="bad">❌ Không có dữ liệu Trading Strategy cho ${symbol}</p>`;
+    }
+    html += `</div>`;
+    
+    // 3. Check Simplize Company Data (Beta)
+    const simplizeRes = await fetch(`${SUPABASE_URL}/rest/v1/simplize_company_data?symbol=eq.${symbol}&limit=1`, { headers });
+    const simplize = (await simplizeRes.json())[0];
+    
+    html += `<div class="card"><h2>📈 Simplize Company Data</h2>`;
+    if (simplize) {
+      html += `
+        <div class="row"><span class="label">Beta 5Y:</span><span class="value ${simplize.beta_5y ? 'good' : 'bad'}">${simplize.beta_5y || 'N/A'}</span></div>
+        <div class="row"><span class="label">PE:</span><span class="value">${simplize.pe || 'N/A'}</span></div>
+        <div class="row"><span class="label">PB:</span><span class="value">${simplize.pb || 'N/A'}</span></div>
+        <div class="row"><span class="label">ROE:</span><span class="value">${simplize.roe || 'N/A'}%</span></div>
+        <div class="row"><span class="label">Updated:</span><span class="value">${simplize.updated_at || 'N/A'}</span></div>`;
+    } else {
+      html += `<p class="bad">❌ Không có dữ liệu Simplize cho ${symbol}</p>`;
+    }
+    html += `</div>`;
+    
+    // 4. Check Technical Indicators
+    const techRes = await fetch(`${SUPABASE_URL}/rest/v1/technical_indicators?symbol=eq.${symbol}&order=calculation_date.desc&limit=1`, { headers });
+    const tech = (await techRes.json())[0];
+    
+    html += `<div class="card"><h2>📉 Technical Indicators</h2>`;
+    if (tech) {
+      html += `
+        <div class="row"><span class="label">RSI 14:</span><span class="value">${tech.rsi_14?.toFixed(2) || 'N/A'}</span></div>
+        <div class="row"><span class="label">MA20:</span><span class="value">${tech.ma20?.toLocaleString() || 'N/A'}</span></div>
+        <div class="row"><span class="label">MA50:</span><span class="value">${tech.ma50?.toLocaleString() || 'N/A'}</span></div>
+        <div class="row"><span class="label">Volatility 20D:</span><span class="value">${tech.volatility_20d?.toFixed(2) || 'N/A'}%</span></div>
+        <div class="row"><span class="label">Calculation Date:</span><span class="value">${tech.calculation_date || 'N/A'}</span></div>`;
+    } else {
+      html += `<p class="bad">❌ Không có dữ liệu Technical Indicators cho ${symbol}</p>`;
+    }
+    html += `</div>`;
+    
+    // 5. Check Stock Prices (latest)
+    const priceRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices?symbol=eq.${symbol}&order=trading_date.desc&limit=5`, { headers });
+    const prices = await priceRes.json();
+    
+    html += `<div class="card"><h2>💰 Stock Prices (5 ngày gần nhất)</h2>`;
+    if (prices.length > 0) {
+      html += `<div class="row"><span class="label">Giá hiện tại:</span><span class="value good">${prices[0].close_price?.toLocaleString()}</span></div>`;
+      html += `<div class="row"><span class="label">Số ngày dữ liệu:</span><span class="value">${prices.length} (showing 5)</span></div>`;
+    } else {
+      html += `<p class="bad">❌ Không có dữ liệu giá cho ${symbol}</p>`;
+    }
+    html += `</div>`;
+    
+    // Summary
+    html += `<div class="card"><h2>📋 Tóm tắt</h2>`;
+    html += `<div class="row"><span class="label">SENAI Analysis:</span><span class="value ${senai ? 'good' : 'bad'}">${senai ? '✅ Có' : '❌ Không'}</span></div>`;
+    html += `<div class="row"><span class="label">Trading Strategy:</span><span class="value ${strategy ? 'good' : 'bad'}">${strategy ? '✅ Có' : '❌ Không'}</span></div>`;
+    html += `<div class="row"><span class="label">Beta (Simplize):</span><span class="value ${simplize?.beta_5y ? 'good' : 'bad'}">${simplize?.beta_5y ? '✅ Có: ' + simplize.beta_5y : '❌ Không'}</span></div>`;
+    html += `<div class="row"><span class="label">Technical Indicators:</span><span class="value ${tech ? 'good' : 'bad'}">${tech ? '✅ Có' : '❌ Không'}</span></div>`;
+    html += `<div class="row"><span class="label">Stock Prices:</span><span class="value ${prices.length > 0 ? 'good' : 'bad'}">${prices.length > 0 ? '✅ Có' : '❌ Không'}</span></div>`;
+    html += `</div>`;
+    
+  } catch (err) {
+    html = `<p class="bad">❌ Lỗi: ${err.message}</p>`;
+  }
+  
+  document.getElementById('result').innerHTML = html;
+}
+
+// Auto run on load
+checkData();
+</script>
