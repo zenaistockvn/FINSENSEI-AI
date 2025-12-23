@@ -2736,6 +2736,15 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
                         height={520}
                         currentTimeframe={timeframe}
                         onTimeframeChange={(tf) => setTimeframe(tf)}
+                        onSymbolClick={() => setShowSearch(true)}
+                        tradingZones={tradingStrategy ? {
+                          buyZoneLow: tradingStrategy.buy_zone_low || 0,
+                          buyZoneHigh: tradingStrategy.buy_zone_high || 0,
+                          stopLoss: tradingStrategy.stop_loss || 0,
+                          target1: tradingStrategy.target_1 || 0,
+                          target2: tradingStrategy.target_2 || 0,
+                          target3: tradingStrategy.target_3 || 0
+                        } : undefined}
                       />
                     ) : (
                       <TradingViewChart 
@@ -2918,7 +2927,11 @@ const StockAnalysis: React.FC<StockAnalysisProps> = ({ isDark = true }) => {
             {/* AI Confidence Meter */}
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
               <AIConfidenceMeter 
-                confidence={aiAlerts[0]?.confidence || aiAnalysis?.confidence || 75}
+                confidence={
+                  aiAlerts[0]?.confidence 
+                    ? aiAlerts[0].confidence * 100 
+                    : aiAnalysis?.confidence || 75
+                }
                 label="Độ tin cậy AI"
                 size={100}
               />

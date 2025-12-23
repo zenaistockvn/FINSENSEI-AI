@@ -10,7 +10,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, ColorType, CrosshairMode, IChartApi, Time, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
 import { 
   TrendingUp, TrendingDown, Layers, ChevronDown, RefreshCw, 
-  ZoomIn, ZoomOut, Activity, Camera, Target, Brain, Shield
+  ZoomIn, ZoomOut, Activity, Camera, Target, Brain, Shield, Maximize2, Minimize2
 } from 'lucide-react';
 
 interface CandleData {
@@ -48,6 +48,7 @@ interface LightweightChartProps {
   currentTimeframe?: string;
   tradingZones?: TradingZones;
   aiSignals?: AISignal[];
+  onSymbolClick?: () => void; // Click để đổi mã chứng khoán
 }
 
 // ========== SUPPORT/RESISTANCE DETECTION ==========
@@ -174,6 +175,61 @@ const calculateRSI = (closes: number[], period: number = 14): number[] => {
   return result;
 };
 
+// Calculate EMA for MACD
+const calculateEMA = (data: number[], period: number): number[] => {
+  const result: number[] = new Array(data.length).fill(0);
+  const multiplier = 2 / (period + 1);
+  result[0] = data[0];
+  
+  for (let i = 1; i < data.length; i++) {
+    result[i] = (data[i] - result[i - 1]) * multiplier + result[i - 1];
+  }
+  return result;
+};
+
+// Calculate MACD
+const calculateMACD = (closes: number[], fastPeriod: number = 12, slowPeriod: number = 26, signalPeriod: number = 9) => {
+  const emaFast = calculateEMA(closes, fastPeriod);
+  const emaSlow = calculateEMA(closes, slowPeriod);
+  
+  const macdLine: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    macdLine.push(emaFast[i] - emaSlow[i]);
+  }
+  
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  
+  const histogram: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    histogram.push(macdLine[i] - signalLine[i]);
+  }
+  
+  return { macdLine, signalLine, histogram };
+};
+
+// Calculate RSI data for chart
+const calculateRSIData = (data: CandleData[]) => {
+  const closes = data.map(d => d.close);
+  const rsi = calculateRSI(closes, 14);
+  return data.map((d, i) => ({ time: d.time as Time, value: rsi[i] })).filter((_, i) => i >= 14);
+};
+
+// Calculate MACD data for chart
+const calculateMACDData = (data: CandleData[]) => {
+  const closes = data.map(d => d.close);
+  const { macdLine, signalLine, histogram } = calculateMACD(closes);
+  
+  return {
+    macd: data.map((d, i) => ({ time: d.time as Time, value: macdLine[i] })).filter((_, i) => i >= 26),
+    signal: data.map((d, i) => ({ time: d.time as Time, value: signalLine[i] })).filter((_, i) => i >= 26),
+    histogram: data.map((d, i) => ({ 
+      time: d.time as Time, 
+      value: histogram[i],
+      color: histogram[i] >= 0 ? (histogram[i] > (histogram[i-1] || 0) ? '#22c55e' : '#86efac') : (histogram[i] < (histogram[i-1] || 0) ? '#ef4444' : '#fca5a5')
+    })).filter((_, i) => i >= 26)
+  };
+};
+
 const calculateMALine = (data: CandleData[], period: number) => {
   const result: { time: Time; value: number }[] = [];
   for (let i = period - 1; i < data.length; i++) {
@@ -188,16 +244,23 @@ const calculateMALine = (data: CandleData[], period: number) => {
 const LightweightChart: React.FC<LightweightChartProps> = ({
   data, symbol, isDark = true, height = 500,
   onTimeframeChange, currentTimeframe = '1Y',
-  tradingZones, aiSignals: externalSignals
+  tradingZones, aiSignals: externalSignals,
+  onSymbolClick
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const rsiContainerRef = useRef<HTMLDivElement>(null);
+  const macdContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const rsiChartRef = useRef<IChartApi | null>(null);
+  const macdChartRef = useRef<IChartApi | null>(null);
   
   const [hoveredData, setHoveredData] = useState<CandleData | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [indicators, setIndicators] = useState({
     ma20: true, ma50: true, volume: true,
-    supportResistance: true, aiSignals: true, tradingZones: true
+    supportResistance: true, aiSignals: true, tradingZones: true,
+    rsi: false, macd: false
   });
 
   const colors = {
@@ -369,6 +432,154 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
     };
   }, [data, isDark, height, indicators, srLevels, aiSignals, tradingZones, colors]);
 
+  // RSI Chart
+  useEffect(() => {
+    if (!rsiContainerRef.current || data.length < 20 || !indicators.rsi) {
+      if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+      return;
+    }
+
+    if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+
+    const rsiChart = createChart(rsiContainerRef.current, {
+      width: rsiContainerRef.current.clientWidth,
+      height: 100,
+      layout: { background: { type: ColorType.Solid, color: colors.bg }, textColor: colors.text, fontFamily: "'Inter', sans-serif" },
+      grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: colors.grid, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: { visible: false },
+      handleScroll: false,
+      handleScale: false
+    });
+
+    rsiChartRef.current = rsiChart;
+
+    // RSI Line
+    const rsiSeries = rsiChart.addSeries(LineSeries, {
+      color: '#a855f7', lineWidth: 2,
+      priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true
+    });
+    rsiSeries.setData(calculateRSIData(data));
+
+    // Overbought line (70)
+    const overboughtSeries = rsiChart.addSeries(LineSeries, {
+      color: '#ef4444', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+    });
+    overboughtSeries.setData([
+      { time: data[14].time as Time, value: 70 },
+      { time: data[data.length - 1].time as Time, value: 70 }
+    ]);
+
+    // Oversold line (30)
+    const oversoldSeries = rsiChart.addSeries(LineSeries, {
+      color: '#22c55e', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+    });
+    oversoldSeries.setData([
+      { time: data[14].time as Time, value: 30 },
+      { time: data[data.length - 1].time as Time, value: 30 }
+    ]);
+
+    // Middle line (50)
+    const middleSeries = rsiChart.addSeries(LineSeries, {
+      color: isDark ? '#475569' : '#cbd5e1', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+    });
+    middleSeries.setData([
+      { time: data[14].time as Time, value: 50 },
+      { time: data[data.length - 1].time as Time, value: 50 }
+    ]);
+
+    rsiChart.timeScale().fitContent();
+
+    // Sync with main chart
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && rsiChartRef.current) {
+          rsiChartRef.current.timeScale().setVisibleLogicalRange(range);
+        }
+      });
+    }
+
+    return () => {
+      if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+    };
+  }, [data, isDark, indicators.rsi, colors]);
+
+  // MACD Chart
+  useEffect(() => {
+    if (!macdContainerRef.current || data.length < 30 || !indicators.macd) {
+      if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+      return;
+    }
+
+    if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+
+    const macdChart = createChart(macdContainerRef.current, {
+      width: macdContainerRef.current.clientWidth,
+      height: 120,
+      layout: { background: { type: ColorType.Solid, color: colors.bg }, textColor: colors.text, fontFamily: "'Inter', sans-serif" },
+      grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: colors.grid, scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: { visible: false },
+      handleScroll: false,
+      handleScale: false
+    });
+
+    macdChartRef.current = macdChart;
+
+    const macdData = calculateMACDData(data);
+
+    // MACD Histogram
+    const histogramSeries = macdChart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'price', precision: 2 },
+      priceLineVisible: false, lastValueVisible: false
+    });
+    histogramSeries.setData(macdData.histogram);
+
+    // MACD Line
+    const macdLineSeries = macdChart.addSeries(LineSeries, {
+      color: '#3b82f6', lineWidth: 2,
+      priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true
+    });
+    macdLineSeries.setData(macdData.macd);
+
+    // Signal Line
+    const signalSeries = macdChart.addSeries(LineSeries, {
+      color: '#f97316', lineWidth: 2,
+      priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true
+    });
+    signalSeries.setData(macdData.signal);
+
+    // Zero line
+    const zeroSeries = macdChart.addSeries(LineSeries, {
+      color: isDark ? '#475569' : '#cbd5e1', lineWidth: 1, lineStyle: 2,
+      priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false
+    });
+    zeroSeries.setData([
+      { time: data[26].time as Time, value: 0 },
+      { time: data[data.length - 1].time as Time, value: 0 }
+    ]);
+
+    macdChart.timeScale().fitContent();
+
+    // Sync with main chart
+    if (chartRef.current) {
+      chartRef.current.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (range && macdChartRef.current) {
+          macdChartRef.current.timeScale().setVisibleLogicalRange(range);
+        }
+      });
+    }
+
+    return () => {
+      if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+    };
+  }, [data, isDark, indicators.macd, colors]);
+
   const handleZoomIn = () => {
     if (chartRef.current) {
       const ts = chartRef.current.timeScale();
@@ -397,6 +608,34 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
     }
   };
 
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // Handle ESC key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
+  // Resize chart when fullscreen changes
+  useEffect(() => {
+    if (chartRef.current && chartContainerRef.current) {
+      setTimeout(() => {
+        chartRef.current?.applyOptions({ 
+          width: chartContainerRef.current?.clientWidth || 800,
+          height: isFullscreen ? window.innerHeight - 120 : height
+        });
+        chartRef.current?.timeScale().fitContent();
+      }, 100);
+    }
+  }, [isFullscreen, height]);
+
   const timeframes = ['1D', '1W', '1M', '3M', '6M', '1Y', '2Y', 'ALL'];
   const latestCandle = data.length > 0 ? data[data.length - 1] : null;
   const prevCandle = data.length > 1 ? data[data.length - 2] : null;
@@ -419,14 +658,27 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
   }
 
   return (
-    <div className={`rounded-xl border overflow-hidden ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+    <div className={`rounded-xl border overflow-hidden transition-all duration-300 ${
+      isFullscreen 
+        ? 'fixed inset-0 z-50 rounded-none' 
+        : ''
+    } ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
       {/* Header */}
       <div className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${isDark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <button 
+            onClick={onSymbolClick}
+            className={`flex items-center gap-2 px-2 py-1 rounded-lg transition-all ${
+              onSymbolClick 
+                ? (isDark ? 'hover:bg-slate-700 cursor-pointer' : 'hover:bg-slate-200 cursor-pointer')
+                : ''
+            }`}
+            title={onSymbolClick ? 'Click để đổi mã chứng khoán' : undefined}
+          >
             <Activity size={16} className="text-cyan-500" />
             <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{symbol}</span>
-          </div>
+            {onSymbolClick && <ChevronDown size={12} className={isDark ? 'text-slate-400' : 'text-slate-500'} />}
+          </button>
           {latestCandle && (
             <div className="flex items-center gap-2">
               <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{latestCandle.close.toLocaleString()}</span>
@@ -471,6 +723,8 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
                     { key: 'ma20', label: 'MA 20', color: colors.ma20 },
                     { key: 'ma50', label: 'MA 50', color: colors.ma50 },
                     { key: 'volume', label: 'Volume', color: colors.bullish },
+                    { key: 'rsi', label: 'RSI (14)', color: '#a855f7' },
+                    { key: 'macd', label: 'MACD (12,26,9)', color: '#3b82f6' },
                   ].map(({ key, label, color }) => (
                     <button key={key} onClick={() => setIndicators(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))}
                       className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-xs ${isDark ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
@@ -500,15 +754,18 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
               </div>
             )}
           </div>
-          <button onClick={handleZoomIn} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><ZoomIn size={14} /></button>
-          <button onClick={handleZoomOut} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><ZoomOut size={14} /></button>
-          <button onClick={handleReset} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><RefreshCw size={14} /></button>
-          <button onClick={handleScreenshot} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}><Camera size={14} /></button>
+          <button onClick={handleZoomIn} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Zoom In"><ZoomIn size={14} /></button>
+          <button onClick={handleZoomOut} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Zoom Out"><ZoomOut size={14} /></button>
+          <button onClick={handleReset} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Reset"><RefreshCw size={14} /></button>
+          <button onClick={handleScreenshot} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title="Screenshot"><Camera size={14} /></button>
+          <button onClick={toggleFullscreen} className={`p-1.5 rounded ${isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`} title={isFullscreen ? 'Exit Fullscreen (ESC)' : 'Fullscreen'}>
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
         </div>
       </div>
 
       <div className="relative">
-        <div ref={chartContainerRef} style={{ height: `${height}px` }} />
+        <div ref={chartContainerRef} style={{ height: isFullscreen ? 'calc(100vh - 120px)' : `${height}px` }} />
         
         <div className={`absolute top-2 left-2 flex flex-wrap gap-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           {indicators.ma20 && <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded" style={{ backgroundColor: colors.ma20 }} />MA20</span>}
@@ -516,6 +773,8 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
           {indicators.supportResistance && srLevels.length > 0 && <span className="flex items-center gap-1"><Target size={10} className="text-cyan-400" />S/R: {srLevels.length}</span>}
           {indicators.aiSignals && aiSignals.length > 0 && <span className="flex items-center gap-1"><Brain size={10} className="text-purple-400" />Signals: {aiSignals.length}</span>}
           {indicators.tradingZones && tradingZones && <span className="flex items-center gap-1"><Shield size={10} className="text-emerald-400" />SENAI</span>}
+          {indicators.rsi && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" />RSI</span>}
+          {indicators.macd && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500" />MACD</span>}
         </div>
 
         {indicators.aiSignals && aiSignals.length > 0 && (
@@ -532,6 +791,41 @@ const LightweightChart: React.FC<LightweightChartProps> = ({
           <span className={`text-4xl font-bold ${isDark ? 'text-white/[0.03]' : 'text-black/[0.03]'}`}>FINSENSEI AI</span>
         </div>
       </div>
+
+      {/* RSI Panel */}
+      {indicators.rsi && data.length >= 20 && (
+        <div className={`border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+          <div className={`px-3 py-1 flex items-center justify-between ${isDark ? 'bg-slate-800/30' : 'bg-slate-50'}`}>
+            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <span className="inline-block w-2 h-2 rounded-full bg-purple-500 mr-1" />
+              RSI (14)
+            </span>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-rose-500">70</span>
+              <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>|</span>
+              <span className="text-emerald-500">30</span>
+            </div>
+          </div>
+          <div ref={rsiContainerRef} style={{ height: '100px' }} />
+        </div>
+      )}
+
+      {/* MACD Panel */}
+      {indicators.macd && data.length >= 30 && (
+        <div className={`border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+          <div className={`px-3 py-1 flex items-center justify-between ${isDark ? 'bg-slate-800/30' : 'bg-slate-50'}`}>
+            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-1" />
+              MACD (12, 26, 9)
+            </span>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-blue-500" />MACD</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-orange-500" />Signal</span>
+            </div>
+          </div>
+          <div ref={macdContainerRef} style={{ height: '120px' }} />
+        </div>
+      )}
 
       {indicators.tradingZones && tradingZones && (
         <div className={`px-3 py-2 border-t flex items-center justify-between text-xs ${isDark ? 'border-slate-700 bg-slate-800/30' : 'border-slate-200 bg-slate-50'}`}>

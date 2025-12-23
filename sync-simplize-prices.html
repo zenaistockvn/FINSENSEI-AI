@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sync Simplize Prices to Supabase</title>
+    <style>
+        body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: #38bdf8; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; margin: 15px 0; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .info { color: #60a5fa; }
+        button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 11px; max-height: 400px; overflow-y: auto; }
+        .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 15px; }
+        .stock-card { background: #334155; padding: 12px; border-radius: 8px; }
+        .stock-symbol { font-weight: bold; color: #38bdf8; }
+        .stock-price { font-size: 18px; font-weight: bold; margin: 5px 0; }
+        .stock-change { font-size: 12px; }
+        .up { color: #10b981; }
+        .down { color: #ef4444; }
+        .progress { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .progress-bar { height: 100%; background: #3b82f6; transition: width 0.3s; }
+        input { padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: white; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Sync Simplize Prices → Supabase</h1>
+        <p>Lấy giá realtime từ Simplize API và cập nhật vào database</p>
+        
+        <div class="card">
+            <h3>🔄 Sync Actions</h3>
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="single-symbol" placeholder="Nhập mã (VD: HPG)" style="width: 150px;">
+                <button onclick="syncSingleStock()">Sync 1 mã</button>
+            </div>
+            <button onclick="syncVN30()">Sync VN30 (30 mã)</button>
+            <button onclick="syncVN100()">Sync VN100 (100 mã)</button>
+            <button onclick="checkCurrentPrices()">Kiểm tra giá hiện tại</button>
+        </div>
+
+        <div class="card">
+            <h3>📈 Progress</h3>
+            <div class="progress"><div class="progress-bar" id="progress-bar" style="width: 0%"></div></div>
+            <div id="progress-text">Sẵn sàng</div>
+        </div>
+
+        <div class="card">
+            <h3>💰 Giá đã sync</h3>
+            <div class="stock-grid" id="stock-grid"></div>
+        </div>
+
+        <div class="card">
+            <h3>📋 Log</h3>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://yvpvhwfpshuhxmqjlvbh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2cHZod2Zwc2h1aHhtcWpsdmJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MTg4ODQsImV4cCI6MjA2MzM5NDg4NH0.3oNDpfdOPy0U0FqmPbVr3JxBfPBwggJCAueBYtiB_7c';
+
+        const VN30 = ['ACB','BCM','BID','BVH','CTG','FPT','GAS','GVR','HDB','HPG','MBB','MSN','MWG','PLX','POW','SAB','SHB','SSB','SSI','STB','TCB','TPB','VCB','VHM','VIB','VIC','VJC','VNM','VPB','VRE'];
+        const VN100_EXTRA = ['AAA','AGG','ANV','ASM','BCG','BMP','BSI','BWE','CII','CMG','DBC','DCM','DGC','DGW','DIG','DPM','DXG','EIB','EVF','FRT','GMD','HAG','HCM','HDC','HDG','HNG','HSG','HT1','IMP','KBC','KDC','KDH','KOS','LPB','MSB','NKG','NLG','NT2','NVL','OCB','PC1','PDR','PET','PHR','PNJ','PPC','PTB','PVD','PVS','PVT','REE','SBT','SCS','SIP','SJS','SZC','TCH','TLG','VCI','VGC','VHC','VND','VOS','VPI','VTP'];
+
+        let syncedStocks = [];
+
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#60a5fa';
+            logEl.innerHTML = `<span style="color:${color}">[${time}] ${msg}</span>\n` + logEl.innerHTML;
+        }
+
+        function updateProgress(current, total, text) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-text').textContent = text || `${current}/${total} (${percent}%)`;
+        }
+
+        function displayStocks(stocks) {
+            const grid = document.getElementById('stock-grid');
+            grid.innerHTML = stocks.map(s => {
+                const isUp = s.change >= 0;
+                return `
+                    <div class="stock-card">
+                        <div class="stock-symbol">${s.symbol}</div>
+                        <div class="stock-price">${s.price.toLocaleString('vi-VN')}</div>
+                        <div class="stock-change ${isUp ? 'up' : 'down'}">
+                            ${isUp ? '▲' : '▼'} ${isUp ? '+' : ''}${s.changePercent.toFixed(2)}%
+                            (${isUp ? '+' : ''}${s.change.toLocaleString('vi-VN')})
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchSimplizePrice(symbol) {
+            try {
+                const res = await fetch(`https://simplize.vn/api/company/snapshot/${symbol.toUpperCase()}`);
+                if (!res.ok) return null;
+                
+                const data = await res.json();
+                const d = data.data;
+                if (!d || !d.price) return null;
+
+                // Simplize trả về giá đã chia 1000
+                return {
+                    symbol: symbol.toUpperCase(),
+                    price: d.price * 1000,
+                    change: (d.priceChange || 0) * 1000,
+                    changePercent: (d.priceChangeRatio || 0) * 100,
+                    open: (d.openPrice || d.price) * 1000,
+                    high: (d.highPrice || d.price) * 1000,
+                    low: (d.lowPrice || d.price) * 1000,
+                    volume: d.totalVolume || 0,
+                    ceiling: (d.ceilingPrice || 0) * 1000,
+                    floor: (d.floorPrice || 0) * 1000,
+                    reference: (d.refPrice || d.price) * 1000,
+                };
+            } catch (e) {
+                console.error(`Error fetching ${symbol}:`, e);
+                return null;
+            }
+        }
+
+        async function updateSupabase(priceData) {
+            const today = new Date().toISOString().split('T')[0];
+            
+            // Update simplize_companies table
+            const simplizePayload = {
+                symbol: priceData.symbol,
+                price_close: priceData.price,
+                price_open: priceData.open,
+                price_high: priceData.high,
+                price_low: priceData.low,
+                price_ceiling: priceData.ceiling,
+                price_floor: priceData.floor,
+                price_reference: priceData.reference,
+                net_change: priceData.change,
+                pct_change: priceData.changePercent,
+                volume: priceData.volume,
+                updated_at: new Date().toISOString()
+            };
+
+            const res1 = await fetch(`${SUPABASE_URL}/rest/v1/simplize_companies?symbol=eq.${priceData.symbol}`, {
+                method: 'PATCH',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=minimal'
+                },
+                body: JSON.stringify(simplizePayload)
+            });
+
+            // Also update/insert into stock_prices for today
+            const pricePayload = {
+                symbol: priceData.symbol,
+                trading_date: today,
+                open_price: priceData.open,
+                high_price: priceData.high,
+                low_price: priceData.low,
+                close_price: priceData.price,
+                volume: priceData.volume
+            };
+
+            const res2 = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                method: 'POST',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'resolution=merge-duplicates'
+                },
+                body: JSON.stringify(pricePayload)
+            });
+
+            return res1.ok || res2.ok;
+        }
+
+        async function syncSingleStock() {
+            const symbol = document.getElementById('single-symbol').value.trim().toUpperCase();
+            if (!symbol) {
+                log('Vui lòng nhập mã cổ phiếu', 'error');
+                return;
+            }
+
+            log(`Đang sync ${symbol}...`);
+            updateProgress(0, 1, `Đang lấy giá ${symbol}...`);
+
+            const price = await fetchSimplizePrice(symbol);
+            if (!price) {
+                log(`Không lấy được giá ${symbol}`, 'error');
+                updateProgress(1, 1, 'Lỗi');
+                return;
+            }
+
+            log(`${symbol}: ${price.price.toLocaleString()} (${price.changePercent >= 0 ? '+' : ''}${price.changePercent.toFixed(2)}%)`, 'success');
+
+            const success = await updateSupabase(price);
+            if (success) {
+                log(`✅ Đã cập nhật ${symbol} vào database`, 'success');
+                syncedStocks = [price];
+                displayStocks(syncedStocks);
+            } else {
+                log(`❌ Lỗi cập nhật ${symbol}`, 'error');
+            }
+
+            updateProgress(1, 1, 'Hoàn tất');
+        }
+
+        async function syncVN30() {
+            await syncMultiple(VN30, 'VN30');
+        }
+
+        async function syncVN100() {
+            const all = [...VN30, ...VN100_EXTRA];
+            await syncMultiple(all, 'VN100');
+        }
+
+        async function syncMultiple(symbols, name) {
+            log(`Bắt đầu sync ${name} (${symbols.length} mã)...`);
+            syncedStocks = [];
+            
+            for (let i = 0; i < symbols.length; i++) {
+                const symbol = symbols[i];
+                updateProgress(i, symbols.length, `Đang sync ${symbol}...`);
+
+                const price = await fetchSimplizePrice(symbol);
+                if (price) {
+                    const success = await updateSupabase(price);
+                    if (success) {
+                        syncedStocks.push(price);
+                        log(`✅ ${symbol}: ${price.price.toLocaleString()} (${price.changePercent >= 0 ? '+' : ''}${price.changePercent.toFixed(2)}%)`, 'success');
+                    } else {
+                        log(`❌ Lỗi DB: ${symbol}`, 'error');
+                    }
+                } else {
+                    log(`⚠️ Không lấy được: ${symbol}`, 'error');
+                }
+
+                displayStocks(syncedStocks);
+                
+                // Delay để tránh rate limit
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            updateProgress(symbols.length, symbols.length, `Hoàn tất! Đã sync ${syncedStocks.length}/${symbols.length} mã`);
+            log(`🎉 Hoàn tất sync ${name}: ${syncedStocks.length}/${symbols.length} mã`, 'success');
+        }
+
+        async function checkCurrentPrices() {
+            log('Đang kiểm tra giá trong database...');
+            
+            try {
+                const res = await fetch(`${SUPABASE_URL}/rest/v1/simplize_companies?select=symbol,price_close,net_change,pct_change&order=symbol.asc&limit=30`, {
+                    headers: {
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_KEY}`
+                    }
+                });
+
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    syncedStocks = data.map(d => ({
+                        symbol: d.symbol,
+                        price: d.price_close || 0,
+                        change: d.net_change || 0,
+                        changePercent: d.pct_change || 0
+                    }));
+                    displayStocks(syncedStocks);
+                    log(`Tìm thấy ${data.length} mã trong database`, 'success');
+                    
+                    // Show first few
+                    data.slice(0, 5).forEach(d => {
+                        log(`  ${d.symbol}: ${(d.price_close || 0).toLocaleString()}`, 'info');
+                    });
+                } else {
+                    log('Không có dữ liệu trong database', 'error');
+                }
+            } catch (e) {
+                log(`Lỗi: ${e.message}`, 'error');
+            }
+        }
+
+        // Auto check on load
+        checkCurrentPrices();
+    </script>
+</body>
+</html>

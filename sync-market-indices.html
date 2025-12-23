@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sync Market Indices - VNINDEX & VN30</title>
+    <style>
+        body { font-family: system-ui; background: #0f172a; color: #e2e8f0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { color: #38bdf8; }
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; margin: 15px 0; }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .info { color: #60a5fa; }
+        button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+        .index-card { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: #334155; border-radius: 8px; margin: 10px 0; }
+        .index-name { font-size: 14px; color: #94a3b8; }
+        .index-value { font-size: 24px; font-weight: bold; }
+        .index-change { font-size: 14px; }
+        .up { color: #10b981; }
+        .down { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Sync Market Indices</h1>
+        <p>Cập nhật dữ liệu VNINDEX và VN30 từ API vào Supabase</p>
+        
+        <div class="card">
+            <h3>🔄 Actions</h3>
+            <button onclick="fetchAndDisplay()">1. Fetch từ API</button>
+            <button onclick="syncToSupabase()">2. Sync vào Supabase</button>
+            <button onclick="checkSupabaseData()">3. Kiểm tra Supabase</button>
+        </div>
+
+        <div class="card">
+            <h3>📈 Dữ liệu hiện tại</h3>
+            <div id="indices-display"></div>
+        </div>
+
+        <div class="card">
+            <h3>📋 Log</h3>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        // Supabase config
+        const SUPABASE_URL = 'https://yvpvhwfpshuhxmqjlvbh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2cHZod2Zwc2h1aHhtcWpsdmJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MTg4ODQsImV4cCI6MjA2MzM5NDg4NH0.3oNDpfdOPy0U0FqmPbVr3JxBfPBwggJCAueBYtiB_7c';
+
+        let currentData = null;
+
+        function log(msg, type = 'info') {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#60a5fa';
+            logEl.innerHTML = `<span style="color:${color}">[${time}] ${msg}</span>\n` + logEl.innerHTML;
+        }
+
+        function displayIndices(data) {
+            const container = document.getElementById('indices-display');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p class="info">Chưa có dữ liệu. Click "Fetch từ API" để lấy dữ liệu.</p>';
+                return;
+            }
+
+            container.innerHTML = data.map(idx => {
+                const isUp = idx.change >= 0;
+                return `
+                    <div class="index-card">
+                        <div>
+                            <div class="index-name">${idx.index_code}</div>
+                            <div class="index-value">${idx.close_value.toLocaleString('vi-VN', {minimumFractionDigits: 2})}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div class="index-change ${isUp ? 'up' : 'down'}">
+                                ${isUp ? '▲' : '▼'} ${isUp ? '+' : ''}${idx.change_percent.toFixed(2)}%
+                            </div>
+                            <div class="index-change ${isUp ? 'up' : 'down'}">
+                                (${isUp ? '+' : ''}${idx.change_value.toFixed(2)})
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function fetchAndDisplay() {
+            log('Đang fetch dữ liệu từ VCI API...');
+            
+            try {
+                // Fetch VNINDEX
+                const vnindexRes = await fetch('https://mt.vietcap.com.vn/api/price/symbols/getByGroup?group=VNINDEX');
+                const vnindexData = await vnindexRes.json();
+                
+                // Fetch VN30
+                const vn30Res = await fetch('https://mt.vietcap.com.vn/api/price/symbols/getByGroup?group=VN30');
+                const vn30Data = await vn30Res.json();
+
+                const today = new Date().toISOString().split('T')[0];
+                
+                currentData = [];
+
+                // Process VNINDEX
+                if (vnindexData && vnindexData.length > 0) {
+                    const idx = vnindexData.find(i => i.sym === 'VNINDEX') || vnindexData[0];
+                    currentData.push({
+                        index_code: 'VNINDEX',
+                        trading_date: today,
+                        open_value: idx.o || idx.lastPrice,
+                        high_value: idx.h || idx.lastPrice,
+                        low_value: idx.l || idx.lastPrice,
+                        close_value: idx.lastPrice || idx.c,
+                        change_value: idx.change || 0,
+                        change_percent: idx.changePc || 0,
+                        volume: idx.lot || 0,
+                        value: idx.value || 0
+                    });
+                    log(`VNINDEX: ${idx.lastPrice} (${idx.changePc >= 0 ? '+' : ''}${idx.changePc}%)`, 'success');
+                }
+
+                // Process VN30
+                if (vn30Data && vn30Data.length > 0) {
+                    const idx = vn30Data.find(i => i.sym === 'VN30') || vn30Data[0];
+                    currentData.push({
+                        index_code: 'VN30',
+                        trading_date: today,
+                        open_value: idx.o || idx.lastPrice,
+                        high_value: idx.h || idx.lastPrice,
+                        low_value: idx.l || idx.lastPrice,
+                        close_value: idx.lastPrice || idx.c,
+                        change_value: idx.change || 0,
+                        change_percent: idx.changePc || 0,
+                        volume: idx.lot || 0,
+                        value: idx.value || 0
+                    });
+                    log(`VN30: ${idx.lastPrice} (${idx.changePc >= 0 ? '+' : ''}${idx.changePc}%)`, 'success');
+                }
+
+                displayIndices(currentData);
+                log(`Đã fetch ${currentData.length} chỉ số`, 'success');
+
+            } catch (error) {
+                log(`Lỗi fetch: ${error.message}`, 'error');
+                
+                // Fallback: Try SSI API
+                log('Thử SSI API...', 'info');
+                try {
+                    const ssiRes = await fetch('https://iboard.ssi.com.vn/dchart/api/1.1/defaultAllStocks');
+                    const ssiData = await ssiRes.json();
+                    
+                    if (ssiData && ssiData.data) {
+                        const vnindex = ssiData.data.find(s => s.stockSymbol === 'VNINDEX');
+                        const vn30 = ssiData.data.find(s => s.stockSymbol === 'VN30');
+                        
+                        const today = new Date().toISOString().split('T')[0];
+                        currentData = [];
+                        
+                        if (vnindex) {
+                            currentData.push({
+                                index_code: 'VNINDEX',
+                                trading_date: today,
+                                open_value: vnindex.openPrice,
+                                high_value: vnindex.highestPrice,
+                                low_value: vnindex.lowestPrice,
+                                close_value: vnindex.matchedPrice || vnindex.priceChange + vnindex.refPrice,
+                                change_value: vnindex.priceChange,
+                                change_percent: vnindex.priceChangePercent,
+                                volume: vnindex.nmTotalTradedQty,
+                                value: vnindex.nmTotalTradedValue
+                            });
+                        }
+                        
+                        if (vn30) {
+                            currentData.push({
+                                index_code: 'VN30',
+                                trading_date: today,
+                                open_value: vn30.openPrice,
+                                high_value: vn30.highestPrice,
+                                low_value: vn30.lowestPrice,
+                                close_value: vn30.matchedPrice || vn30.priceChange + vn30.refPrice,
+                                change_value: vn30.priceChange,
+                                change_percent: vn30.priceChangePercent,
+                                volume: vn30.nmTotalTradedQty,
+                                value: vn30.nmTotalTradedValue
+                            });
+                        }
+                        
+                        displayIndices(currentData);
+                        log(`SSI API: Đã fetch ${currentData.length} chỉ số`, 'success');
+                    }
+                } catch (e2) {
+                    log(`SSI API cũng lỗi: ${e2.message}`, 'error');
+                }
+            }
+        }
+
+        async function syncToSupabase() {
+            if (!currentData || currentData.length === 0) {
+                log('Chưa có dữ liệu. Hãy fetch trước!', 'error');
+                return;
+            }
+
+            log('Đang sync vào Supabase...');
+
+            try {
+                for (const idx of currentData) {
+                    // Upsert - update if exists, insert if not
+                    const response = await fetch(`${SUPABASE_URL}/rest/v1/market_indices`, {
+                        method: 'POST',
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`,
+                            'Content-Type': 'application/json',
+                            'Prefer': 'resolution=merge-duplicates'
+                        },
+                        body: JSON.stringify(idx)
+                    });
+
+                    if (response.ok) {
+                        log(`✅ Synced ${idx.index_code}: ${idx.close_value}`, 'success');
+                    } else {
+                        const err = await response.text();
+                        log(`❌ Lỗi sync ${idx.index_code}: ${err}`, 'error');
+                    }
+                }
+
+                log('Hoàn tất sync!', 'success');
+            } catch (error) {
+                log(`Lỗi sync: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkSupabaseData() {
+            log('Đang kiểm tra dữ liệu trong Supabase...');
+
+            try {
+                const response = await fetch(
+                    `${SUPABASE_URL}/rest/v1/market_indices?order=trading_date.desc&limit=10`,
+                    {
+                        headers: {
+                            'apikey': SUPABASE_KEY,
+                            'Authorization': `Bearer ${SUPABASE_KEY}`
+                        }
+                    }
+                );
+
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    log(`Tìm thấy ${data.length} records trong Supabase`, 'success');
+                    
+                    // Group by date
+                    const byDate = {};
+                    data.forEach(d => {
+                        if (!byDate[d.trading_date]) byDate[d.trading_date] = [];
+                        byDate[d.trading_date].push(d);
+                    });
+
+                    Object.entries(byDate).forEach(([date, indices]) => {
+                        log(`📅 ${date}:`, 'info');
+                        indices.forEach(idx => {
+                            log(`   ${idx.index_code}: ${idx.close_value} (${idx.change_percent >= 0 ? '+' : ''}${idx.change_percent?.toFixed(2) || 0}%)`, 'info');
+                        });
+                    });
+
+                    // Display latest
+                    const latestDate = Object.keys(byDate)[0];
+                    displayIndices(byDate[latestDate]);
+                } else {
+                    log('Không có dữ liệu trong Supabase', 'error');
+                }
+            } catch (error) {
+                log(`Lỗi kiểm tra: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto fetch on load
+        fetchAndDisplay();
+    </script>
+</body>
+</html>

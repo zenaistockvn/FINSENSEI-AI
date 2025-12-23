@@ -41,38 +41,41 @@ export interface StockSummary {
 
 /**
  * Lấy giá từ Simplize API trực tiếp
+ * API summary trả về giá đúng VND (VD: 27050 = 27,050 VND)
  */
 async function fetchSimplizeAPI(symbol: string): Promise<StockPrice | null> {
   try {
+    // Dùng endpoint summary (ổn định hơn)
     const response = await fetch(
       `https://api.simplize.vn/api/company/summary/${symbol.toLowerCase()}`
     );
-    
+
     if (!response.ok) {
       return null;
     }
-    
+
     const result = await response.json();
     const d = result.data;
-    
-    if (!d) {
+
+    if (!d || !d.priceClose) {
       return null;
     }
-    
+
+    // API summary trả về giá đúng VND, KHÔNG cần nhân 1000
     return {
       symbol: symbol.toUpperCase(),
-      price: d.price || d.closePrice || 0,
-      change: d.netChange || d.change || 0,
-      changePercent: d.pctChange || d.changePercent || 0,
-      open: d.openPrice || d.open || 0,
-      high: d.highPrice || d.high || 0,
-      low: d.lowPrice || d.low || 0,
+      price: d.priceClose || 0,
+      change: d.netChange || 0,
+      changePercent: d.pctChange || 0,
+      open: d.priceOpen || d.priceClose || 0,
+      high: d.priceHigh || d.priceClose || 0,
+      low: d.priceLow || d.priceClose || 0,
       volume: d.volume || 0,
-      value: d.value || 0,
-      ceiling: d.ceilingPrice || d.ceiling || 0,
-      floor: d.floorPrice || d.floor || 0,
-      reference: d.refPrice || d.referencePrice || 0,
-      avgPrice: d.avgPrice || d.price || 0,
+      value: 0,
+      ceiling: d.priceCeiling || 0,
+      floor: d.priceFloor || 0,
+      reference: d.priceReferrance || d.priceClose || 0,
+      avgPrice: d.priceClose || 0,
       foreignBuy: 0,
       foreignSell: 0,
       updatedAt: new Date().toISOString(),
