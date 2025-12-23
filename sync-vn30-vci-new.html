@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync VN30 Prices - VCI API</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            color: #e2e8f0;
+            padding: 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 8px; color: #818cf8; font-size: 1.8rem; }
+        .subtitle { text-align: center; color: #64748b; margin-bottom: 24px; }
+        .card {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        .card h2 { font-size: 1.1rem; margin-bottom: 16px; color: #a5b4fc; display: flex; align-items: center; gap: 8px; }
+        .info-box {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .info-box h3 { color: #818cf8; margin-bottom: 8px; }
+        .info-box ul { list-style: none; color: #94a3b8; }
+        .info-box li { padding: 4px 0; }
+        .info-box li::before { content: "✓ "; color: #4ade80; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        .stat-item {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-value { font-size: 1.8rem; font-weight: bold; color: #4ade80; }
+        .stat-label { font-size: 0.8rem; color: #64748b; margin-top: 4px; }
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #818cf8, #4ade80);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin: 4px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #818cf8, #6366f1); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255, 255, 255, 0.2); }
+        .btn-success { background: linear-gradient(135deg, #4ade80, #22c55e); color: #0f172a; }
+        .log-container {
+            background: #0f172a;
+            border-radius: 10px;
+            padding: 16px;
+            max-height: 350px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.8rem;
+        }
+        .log-entry { padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        .log-success { color: #4ade80; }
+        .log-error { color: #f87171; }
+        .log-warning { color: #fbbf24; }
+        .log-info { color: #60a5fa; }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .status-idle { background: rgba(100, 116, 139, 0.3); color: #94a3b8; }
+        .status-running { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .status-complete { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
+        .spinner {
+            width: 14px; height: 14px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .symbol-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .symbol-tag {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: rgba(100, 116, 139, 0.3);
+            color: #94a3b8;
+        }
+        .symbol-tag.done { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .symbol-tag.current { background: rgba(99, 102, 241, 0.3); color: #818cf8; animation: pulse 1s infinite; }
+        .symbol-tag.error { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Sync VN30 Prices - VCI API</h1>
+        <p class="subtitle">Đồng bộ giá cổ phiếu VN30 từ Vietcap Securities API</p>
+        
+        <div class="info-box">
+            <h3>ℹ️ Thông tin API</h3>
+            <ul>
+                <li>Endpoint: trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart</li>
+                <li>Dữ liệu: 1 năm (365 ngày giao dịch)</li>
+                <li>Danh sách: 30 mã VN30 + 3 chỉ số thị trường</li>
+                <li>Ước tính: ~8,000 bản ghi giá</li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>📈 Trạng thái</h2>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+                <span class="status-badge status-idle" id="statusBadge">⏸️ Chờ bắt đầu</span>
+                <span id="currentSymbol" style="color: #64748b; font-size: 0.9rem;"></span>
+            </div>
+            
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-text">
+                <span id="progressText">0 / 33 mã</span>
+                <span id="timeRemaining">--</span>
+            </div>
+            
+            <div class="stats-grid" style="margin-top: 16px;">
+                <div class="stat-item">
+                    <div class="stat-value" id="priceCount">0</div>
+                    <div class="stat-label">Bản ghi giá</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stockCount">0</div>
+                    <div class="stat-label">Cổ phiếu</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="indexCount">0</div>
+                    <div class="stat-label">Chỉ số</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="errorCount">0</div>
+                    <div class="stat-label">Lỗi</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🎯 Danh sách VN30</h2>
+            <div class="symbol-grid" id="symbolGrid"></div>
+        </div>
+        
+        <div class="card">
+            <h2>🎮 Điều khiển</h2>
+            <button class="btn btn-primary" id="btnStart" onclick="startSync()">🚀 Bắt đầu Sync</button>
+            <button class="btn btn-secondary" id="btnStop" onclick="stopSync()" disabled>⏹️ Dừng</button>
+            <button class="btn btn-secondary" onclick="clearLogs()">🗑️ Xóa Log</button>
+            <button class="btn btn-success" onclick="testVCI()">🧪 Test VCI API</button>
+        </div>
+        
+        <div class="card">
+            <h2>📝 Log</h2>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry log-info">Sẵn sàng sync dữ liệu VN30 từ VCI API...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase config
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjIxODU0MSwiZXhwIjoyMDgxNzk0NTQxfQ.auj1AHSwWifdueryQXXgUHo6hK0uqkJxt_Gizfb6UfU";
+        
+        const supabaseHeaders = {
+            "apikey": SERVICE_KEY,
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        };
+        
+        // VN30 symbols (as of Dec 2024)
+        const VN30_SYMBOLS = [
+            "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",
+            "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SSB", "SSI", "STB", "TCB",
+            "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE", "SHB"
+        ];
+        
+        // Index codes with VCI mapping
+        const INDICES = [
+            { code: "VNINDEX", vci: "VNINDEX" },
+            { code: "VN30", vci: "VN30" },
+            { code: "HNX", vci: "HNXIndex" }
+        ];
+        
+        // State
+        let isRunning = false;
+        let shouldStop = false;
+        let stats = { priceCount: 0, stockCount: 0, indexCount: 0, errorCount: 0, startTime: null };
+        
+        // Initialize symbol grid
+        function initSymbolGrid() {
+            const grid = document.getElementById('symbolGrid');
+            let html = VN30_SYMBOLS.map(s => `<span class="symbol-tag" id="tag-${s}">${s}</span>`).join('');
+            html += INDICES.map(i => `<span class="symbol-tag" id="tag-${i.code}">${i.code}</span>`).join('');
+            grid.innerHTML = html;
+        }
+        initSymbolGrid();
+        
+        function updateSymbolStatus(symbol, status) {
+            const tag = document.getElementById(`tag-${symbol}`);
+            if (tag) tag.className = `symbol-tag ${status}`;
+        }
+        
+        // Logging
+        function log(msg, type = 'info') {
+            const container = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+        
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '<div class="log-entry log-info">Log đã xóa...</div>';
+        }
+        
+        // UI Updates
+        function updateStatus(status, text) {
+            const badge = document.getElementById('statusBadge');
+            badge.className = `status-badge status-${status}`;
+            badge.innerHTML = status === 'running' 
+                ? `<span class="spinner"></span><span>${text}</span>`
+                : text;
+        }
+        
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressFill').style.width = `${percent}%`;
+            document.getElementById('progressText').textContent = `${current} / ${total} mã`;
+            
+            if (stats.startTime && current > 0) {
+                const elapsed = (Date.now() - stats.startTime) / 1000;
+                const remaining = Math.round((total - current) * (elapsed / current) / 60);
+                document.getElementById('timeRemaining').textContent = remaining > 0 ? `~${remaining} phút` : 'Sắp xong';
+            }
+        }
+        
+        function updateStats() {
+            document.getElementById('priceCount').textContent = stats.priceCount.toLocaleString();
+            document.getElementById('stockCount').textContent = stats.stockCount;
+            document.getElementById('indexCount').textContent = stats.indexCount;
+            document.getElementById('errorCount').textContent = stats.errorCount;
+        }
+        
+        // VCI API - Fetch stock history using correct endpoint
+        async function fetchVCIHistory(symbol, countBack = 365) {
+            try {
+                const url = 'https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart';
+                const endTimestamp = Math.floor(Date.now() / 1000);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        timeFrame: 'ONE_DAY',
+                        symbols: [symbol],
+                        to: endTimestamp,
+                        countBack: countBack
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const jsonData = await response.json();
+                
+                if (!jsonData || !jsonData.length || !jsonData[0].t) {
+                    return null;
+                }
+                
+                const symbolData = jsonData[0];
+                
+                // Transform VCI format to our format
+                const prices = [];
+                for (let i = 0; i < symbolData.t.length; i++) {
+                    prices.push({
+                        symbol: symbol,
+                        trading_date: new Date(symbolData.t[i] * 1000).toISOString().split('T')[0],
+                        open_price: Math.round(symbolData.o[i] * 1000),   // Convert to VNĐ
+                        high_price: Math.round(symbolData.h[i] * 1000),
+                        low_price: Math.round(symbolData.l[i] * 1000),
+                        close_price: Math.round(symbolData.c[i] * 1000),
+                        volume: symbolData.v[i] || 0,
+                        value: Math.round(symbolData.c[i] * 1000 * (symbolData.v[i] || 0))
+                    });
+                }
+                
+                return prices;
+            } catch (error) {
+                log(`VCI API error for ${symbol}: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        // Fetch index history
+        async function fetchVCIIndexHistory(indexCode, vciCode, countBack = 365) {
+            try {
+                const url = 'https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart';
+                const endTimestamp = Math.floor(Date.now() / 1000);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        timeFrame: 'ONE_DAY',
+                        symbols: [vciCode],
+                        to: endTimestamp,
+                        countBack: countBack
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const jsonData = await response.json();
+                
+                if (!jsonData || !jsonData.length || !jsonData[0].t) {
+                    return null;
+                }
+                
+                const symbolData = jsonData[0];
+                
+                const data = [];
+                for (let i = 0; i < symbolData.t.length; i++) {
+                    const prevClose = i > 0 ? symbolData.c[i - 1] : symbolData.o[i];
+                    data.push({
+                        index_code: indexCode,
+                        trading_date: new Date(symbolData.t[i] * 1000).toISOString().split('T')[0],
+                        open_value: symbolData.o[i],
+                        high_value: symbolData.h[i],
+                        low_value: symbolData.l[i],
+                        close_value: symbolData.c[i],
+                        volume: symbolData.v[i] || 0,
+                        value: 0,
+                        change_value: Math.round((symbolData.c[i] - prevClose) * 100) / 100,
+                        change_percent: Math.round((symbolData.c[i] - prevClose) / prevClose * 10000) / 100
+                    });
+                }
+                
+                return data;
+            } catch (error) {
+                log(`VCI Index API error for ${indexCode}: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        // Supabase upsert
+        async function upsertToSupabase(table, data) {
+            if (!data?.length) return 0;
+            
+            const batchSize = 500;
+            let inserted = 0;
+            
+            for (let i = 0; i < data.length; i += batchSize) {
+                const batch = data.slice(i, i + batchSize);
+                
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+                        method: "POST",
+                        headers: supabaseHeaders,
+                        body: JSON.stringify(batch)
+                    });
+                    
+                    if (response.ok) {
+                        inserted += batch.length;
+                    } else {
+                        const text = await response.text();
+                        if (text.includes('duplicate') || text.includes('conflict')) {
+                            inserted += batch.length;
+                        } else {
+                            log(`Supabase error: ${text.substring(0, 100)}`, 'warning');
+                        }
+                    }
+                } catch (error) {
+                    log(`Supabase error: ${error.message}`, 'error');
+                }
+            }
+            
+            return inserted;
+        }
+        
+        // Test VCI API
+        async function testVCI() {
+            log('🧪 Testing VCI API...', 'info');
+            
+            try {
+                const testData = await fetchVCIHistory('FPT', 10);
+                if (testData?.length) {
+                    log(`✅ VCI API hoạt động! Lấy được ${testData.length} bản ghi cho FPT`, 'success');
+                    log(`   Mẫu: ${testData[0].trading_date} - Close: ${testData[0].close_price.toLocaleString()} VNĐ`, 'info');
+                } else {
+                    log('⚠️ VCI API không trả về dữ liệu', 'warning');
+                }
+            } catch (error) {
+                log(`❌ VCI API lỗi: ${error.message}`, 'error');
+            }
+        }
+        
+        // Main sync
+        async function startSync() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            shouldStop = false;
+            stats = { priceCount: 0, stockCount: 0, indexCount: 0, errorCount: 0, startTime: Date.now() };
+            
+            // Reset symbol tags
+            VN30_SYMBOLS.forEach(s => updateSymbolStatus(s, ''));
+            INDICES.forEach(i => updateSymbolStatus(i.code, ''));
+            
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStop').disabled = false;
+            
+            updateStatus('running', '🔄 Đang sync...');
+            log('🚀 Bắt đầu sync VN30 từ VCI API (trading.vietcap.com.vn)...', 'info');
+            
+            const totalItems = VN30_SYMBOLS.length + INDICES.length;
+            let completed = 0;
+            
+            // Sync stocks
+            for (const symbol of VN30_SYMBOLS) {
+                if (shouldStop) break;
+                
+                completed++;
+                document.getElementById('currentSymbol').textContent = `Đang xử lý: ${symbol}`;
+                updateSymbolStatus(symbol, 'current');
+                
+                try {
+                    const prices = await fetchVCIHistory(symbol, 365);
+                    
+                    if (prices?.length) {
+                        const inserted = await upsertToSupabase('stock_prices', prices);
+                        stats.priceCount += inserted;
+                        stats.stockCount++;
+                        updateSymbolStatus(symbol, 'done');
+                        log(`✅ ${symbol}: ${inserted} bản ghi`, 'success');
+                    } else {
+                        stats.errorCount++;
+                        updateSymbolStatus(symbol, 'error');
+                        log(`⚠️ ${symbol}: Không có dữ liệu`, 'warning');
+                    }
+                } catch (error) {
+                    stats.errorCount++;
+                    updateSymbolStatus(symbol, 'error');
+                    log(`❌ ${symbol}: ${error.message}`, 'error');
+                }
+                
+                updateProgress(completed, totalItems);
+                updateStats();
+                
+                // Rate limiting - 1 second delay
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            // Sync indices
+            if (!shouldStop) {
+                log('📊 Đang sync chỉ số thị trường...', 'info');
+                
+                for (const index of INDICES) {
+                    if (shouldStop) break;
+                    
+                    completed++;
+                    document.getElementById('currentSymbol').textContent = `Đang xử lý: ${index.code}`;
+                    updateSymbolStatus(index.code, 'current');
+                    
+                    try {
+                        const indexData = await fetchVCIIndexHistory(index.code, index.vci, 365);
+                        
+                        if (indexData?.length) {
+                            const inserted = await upsertToSupabase('market_indices', indexData);
+                            stats.indexCount += inserted;
+                            updateSymbolStatus(index.code, 'done');
+                            log(`✅ ${index.code}: ${inserted} bản ghi`, 'success');
+                        } else {
+                            updateSymbolStatus(index.code, 'error');
+                            log(`⚠️ ${index.code}: Không có dữ liệu`, 'warning');
+                        }
+                    } catch (error) {
+                        updateSymbolStatus(index.code, 'error');
+                        log(`❌ ${index.code}: ${error.message}`, 'error');
+                    }
+                    
+                    updateProgress(completed, totalItems);
+                    updateStats();
+                    
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+            
+            // Complete
+            isRunning = false;
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+            document.getElementById('currentSymbol').textContent = '';
+            
+            if (shouldStop) {
+                updateStatus('idle', '⏸️ Đã dừng');
+                log('⏹️ Sync đã bị dừng', 'warning');
+            } else {
+                updateStatus('complete', '✅ Hoàn thành');
+                const duration = Math.round((Date.now() - stats.startTime) / 1000);
+                log(`🎉 Hoàn thành trong ${duration} giây!`, 'success');
+                log(`📊 Tổng: ${stats.priceCount.toLocaleString()} giá, ${stats.stockCount} cổ phiếu, ${stats.indexCount} chỉ số`, 'success');
+            }
+        }
+        
+        function stopSync() {
+            shouldStop = true;
+            log('⏹️ Đang dừng...', 'warning');
+        }
+    </script>
+</body>
+</html>

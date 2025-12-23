@@ -228,7 +228,7 @@ export interface SimplizeCompanyData {
   market_cap: number;
   outstanding_shares: number;
   free_float_rate: number;
-  
+
   // Price data
   price_close: number;
   price_open: number;
@@ -241,19 +241,19 @@ export interface SimplizeCompanyData {
   pct_change: number;
   volume: number;
   volume_10d_avg: number;
-  
+
   // Valuation ratios
   pe_ratio: number;
   pb_ratio: number;
   eps: number;
   book_value: number;
   dividend_yield: number;
-  
+
   // Financial metrics
   roe: number;
   roa: number;
   beta_5y: number;
-  
+
   // Growth metrics
   revenue_5y_growth: number;
   net_income_5y_growth: number;
@@ -261,7 +261,7 @@ export interface SimplizeCompanyData {
   net_income_ltm_growth: number;
   revenue_qoq_growth: number;
   net_income_qoq_growth: number;
-  
+
   // Price changes
   price_chg_7d: number;
   price_chg_30d: number;
@@ -269,26 +269,26 @@ export interface SimplizeCompanyData {
   price_chg_1y: number;
   price_chg_3y: number;
   price_chg_5y: number;
-  
+
   // Simplize scores (0-5)
   valuation_point: number;
   growth_point: number;
   performance_point: number;
   financial_health_point: number;
   dividend_point: number;
-  
+
   // Signals
   ta_signal_1d: string;
   overall_risk_level: string;
   quality_valuation: string;
   company_quality: number;
-  
+
   // Business info
   main_service: string;
   business_overview: string;
   business_strategy: string;
   business_risk: string;
-  
+
   // Meta
   watchlist_count: number;
   no_of_recommendations: number;
@@ -299,16 +299,16 @@ export interface SimplizeCompanyData {
 async function fetchFromSupabase<T>(endpoint: string, params: string = ""): Promise<T[]> {
   try {
     const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
-    
-    const response = await fetch(url, { 
+
+    const response = await fetch(url, {
       headers,
       cache: 'no-store' // Force no caching
     });
-    
+
     if (!response.ok) {
       throw new Error(`Supabase error: ${response.status}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error(`Error fetching ${endpoint}:`, error);
@@ -332,7 +332,7 @@ export async function getCompanyBySymbol(symbol: string): Promise<Company | null
 
 export async function searchCompanies(query: string): Promise<Company[]> {
   return fetchFromSupabase<Company>(
-    "companies", 
+    "companies",
     `or=(symbol.ilike.*${query}*,company_name.ilike.*${query}*)&is_active=eq.true&limit=10`
   );
 }
@@ -340,14 +340,80 @@ export async function searchCompanies(query: string): Promise<Company[]> {
 // Stock Prices
 export async function getStockPrices(symbol: string, limit: number = 30): Promise<StockPrice[]> {
   return fetchFromSupabase<StockPrice>(
-    "stock_prices", 
+    "stock_prices",
     `symbol=eq.${symbol}&order=trading_date.desc&limit=${limit}`
   );
 }
 
+// Get monthly prices (near 1st of month) for backtesting
+export async function getMonthlyPriceHistory(
+  symbol: string,
+  years: number = 5,
+  startDateStr?: string,
+  endDateStr?: string
+): Promise<StockPrice[]> {
+  // Use provided startDateStr or calculate from years
+  let finalStartDate = startDateStr;
+
+  if (!finalStartDate) {
+    const startDate = new Date();
+    startDate.setFullYear(startDate.getFullYear() - years);
+    finalStartDate = startDate.toISOString().split('T')[0];
+  }
+
+  // Build query
+  // Build base query part
+  const baseQuery = `symbol=eq.${symbol}&trading_date=gte.${finalStartDate}${endDateStr ? `&trading_date=lte.${endDateStr}` : ''}`;
+
+  // Fetch data in batches to overcome server limits (usually 1000 rows)
+  let allPriceData: StockPrice[] = [];
+  let offset = 0;
+  const BATCH_SIZE = 1000;
+  let keepFetching = true;
+
+  while (keepFetching) {
+    // Select only necessary columns and use pagination
+    const query = `${baseQuery}&select=trading_date,close_price&order=trading_date.asc&limit=${BATCH_SIZE}&offset=${offset}`;
+
+    const batchData = await fetchFromSupabase<StockPrice>("stock_prices", query);
+
+    if (batchData.length > 0) {
+      allPriceData = allPriceData.concat(batchData);
+
+      // If we got less than BATCH_SIZE, we've reached the end
+      if (batchData.length < BATCH_SIZE) {
+        keepFetching = false;
+      } else {
+        // Move to next page
+        offset += BATCH_SIZE;
+      }
+    } else {
+      keepFetching = false;
+    }
+  }
+
+  if (allPriceData.length === 0) return [];
+
+  // Filter for the first available trading day of each month
+  const monthlyData: StockPrice[] = [];
+  const seenMonths = new Set<string>();
+
+  allPriceData.forEach(price => {
+    const date = new Date(price.trading_date);
+    const monthKey = `${date.getFullYear()}-${date.getMonth() + 1}`;
+
+    if (!seenMonths.has(monthKey)) {
+      monthlyData.push(price);
+      seenMonths.add(monthKey);
+    }
+  });
+
+  return monthlyData;
+}
+
 export async function getLatestPrice(symbol: string): Promise<StockPrice | null> {
   const data = await fetchFromSupabase<StockPrice>(
-    "stock_prices", 
+    "stock_prices",
     `symbol=eq.${symbol}&order=trading_date.desc&limit=1`
   );
   return data[0] || null;
@@ -363,7 +429,7 @@ export async function getMultipleLatestPrices(symbols: string[]): Promise<StockP
 // Market Indices
 export async function getMarketIndices(limit: number = 30): Promise<MarketIndex[]> {
   return fetchFromSupabase<MarketIndex>(
-    "market_indices", 
+    "market_indices",
     `order=trading_date.desc&limit=${limit}`
   );
 }
@@ -374,9 +440,9 @@ export async function getLatestIndices(): Promise<MarketIndex[]> {
     "market_indices",
     "order=trading_date.desc&limit=1"
   );
-  
+
   if (latest.length === 0) return [];
-  
+
   const latestDate = latest[0].trading_date;
   return fetchFromSupabase<MarketIndex>(
     "market_indices",
@@ -414,7 +480,7 @@ export async function getAllFinancialRatios(): Promise<FinancialRatio[]> {
     "financial_ratios",
     `order=symbol.asc,year.desc,quarter.desc`
   );
-  
+
   // Keep only the latest record for each symbol
   const latestBySymbol = new Map<string, FinancialRatio>();
   data.forEach(item => {
@@ -422,7 +488,7 @@ export async function getAllFinancialRatios(): Promise<FinancialRatio[]> {
       latestBySymbol.set(item.symbol, item);
     }
   });
-  
+
   return Array.from(latestBySymbol.values());
 }
 
@@ -457,9 +523,9 @@ export async function getTopMovers(limit: number = 10): Promise<StockPrice[]> {
     "stock_prices",
     "order=trading_date.desc&limit=1"
   );
-  
+
   if (latest.length === 0) return [];
-  
+
   const latestDate = latest[0].trading_date;
   return fetchFromSupabase<StockPrice>(
     "stock_prices",
@@ -480,7 +546,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     getTopMovers(10),
     getVN100Companies()
   ]);
-  
+
   return {
     indices,
     topMovers,
@@ -646,11 +712,11 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
       "senai_diagnosis",
       `select=symbol,senai_score,signal,current_price,rating&order=senai_score.desc&limit=${limit}`
     );
-    
+
     if (senaiData && senaiData.length > 0) {
       return senaiData;
     }
-    
+
     // Fallback: Get from ai_analysis + simplize_company_data
     const [aiData, simplizeData] = await Promise.all([
       fetchFromSupabase<{
@@ -664,12 +730,12 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
         current_price: number;
       }>("simplize_company_data", `select=symbol,current_price`)
     ]);
-    
+
     if (aiData && aiData.length > 0) {
       // Create price map
       const priceMap = new Map<string, number>();
       simplizeData?.forEach(s => priceMap.set(s.symbol, s.current_price));
-      
+
       // Map signal from recommendation
       const getSignal = (rec: string, score: number): string => {
         if (score >= 80) return 'MUA MẠNH';
@@ -679,7 +745,7 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
         if (score >= 30) return 'THẬN TRỌNG';
         return 'BÁN';
       };
-      
+
       return aiData.map(ai => ({
         symbol: ai.symbol,
         senai_score: ai.score || 0,
@@ -688,7 +754,7 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
         rating: ai.rating || Math.ceil((ai.score || 0) / 20)
       }));
     }
-    
+
     // Final fallback: Get from technical_indicators with RS score
     const techData = await fetchFromSupabase<{
       symbol: string;
@@ -696,7 +762,7 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
       current_price: number;
       rsi_14: number;
     }>("technical_indicators", `select=symbol,rs_rating,current_price,rsi_14&order=rs_rating.desc&limit=${limit}`);
-    
+
     if (techData && techData.length > 0) {
       return techData.map(t => ({
         symbol: t.symbol,
@@ -706,7 +772,7 @@ export async function getTopSenaiStocks(limit: number = 10): Promise<TopSenaiSto
         rating: Math.ceil((t.rs_rating || 50) / 20)
       }));
     }
-    
+
     return [];
   } catch (error) {
     console.error('Error fetching top SENAI stocks:', error);
@@ -720,6 +786,7 @@ export default {
   getCompanyBySymbol,
   searchCompanies,
   getStockPrices,
+  getMonthlyPriceHistory,
   getLatestPrice,
   getMultipleLatestPrices,
   getMarketIndices,

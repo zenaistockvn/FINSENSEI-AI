@@ -18,10 +18,11 @@ const GuruPortfolios = lazy(() => import('./components/GuruPortfolios'));
 const SenAssistant = lazy(() => import('./components/SenAssistant'));
 const UserProfileComponent = lazy(() => import('./components/UserProfile'));
 const PortfolioOptimizer = lazy(() => import('./components/PortfolioOptimizer'));
+const AccumulationTool = lazy(() => import('./components/AccumulationTool'));
 
 // Loading fallback component
 const LoadingFallback: React.FC<{ height?: string }> = ({ height = '200px' }) => (
-  <div 
+  <div
     className="animate-pulse bg-slate-200 dark:bg-slate-800 rounded-xl"
     style={{ height }}
     role="status"
@@ -85,7 +86,7 @@ const App: React.FC = () => {
   const loadUserProfile = async (authUser: SupabaseUser) => {
     try {
       const profile = await getUserProfile(authUser.id);
-      
+
       // Convert Supabase profile to app User type
       const appUser: User = {
         name: profile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User',
@@ -94,7 +95,7 @@ const App: React.FC = () => {
         plan: (profile?.plan as PlanType) || 'basic',
         memberSince: new Date(authUser.created_at).toLocaleDateString('vi-VN')
       };
-      
+
       setUser(appUser);
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -151,18 +152,18 @@ const App: React.FC = () => {
             <Suspense fallback={<LoadingFallback height="120px" />}>
               <MarketPulse />
             </Suspense>
-            
+
             {/* Row 2: Giới thiệu FinSensei AI */}
             <Suspense fallback={<LoadingFallback height="280px" />}>
               <FinSenseiIntro isDark={isDark} onTrySen={() => setActiveTab('sen_assistant')} />
             </Suspense>
-            
+
             {/* Row 3: Tâm lý thị trường + Top cổ phiếu */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Suspense fallback={<LoadingFallback height="320px" />}>
                 <MarketSentimentGauge isDark={isDark} />
               </Suspense>
-              
+
               <Suspense fallback={<LoadingFallback height="320px" />}>
                 <SmartRankings />
               </Suspense>
@@ -203,6 +204,12 @@ const App: React.FC = () => {
         return (
           <Suspense fallback={<LoadingFallback height="500px" />}>
             <PortfolioOptimizer isDark={isDark} />
+          </Suspense>
+        );
+      case 'accumulation':
+        return (
+          <Suspense fallback={<LoadingFallback height="600px" />}>
+            <AccumulationTool isDark={isDark} />
           </Suspense>
         );
       default:
@@ -262,33 +269,33 @@ const App: React.FC = () => {
       <a href="#main-content" className="skip-link">
         Chuyển đến nội dung chính
       </a>
-      
+
       <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-[#050511] text-slate-900 dark:text-slate-200 font-sans selection:bg-indigo-500/30 selection:text-indigo-800 dark:selection:text-indigo-200 transition-colors duration-300">
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
           isMobileOpen={isMobileMenuOpen}
           setIsMobileOpen={setIsMobileMenuOpen}
         />
 
         <main id="main-content" className="flex-1 flex flex-col h-full overflow-hidden relative" role="main" aria-label="Nội dung chính">
           {/* Background Grid Effect */}
-          <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-100 transition-opacity" 
+          <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-100 transition-opacity"
             aria-hidden="true"
-            style={{ 
-              backgroundImage: `radial-gradient(circle at 50% 50%, ${isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(148, 163, 184, 0.2)'} 1px, transparent 1px)`, 
-              backgroundSize: '40px 40px' 
+            style={{
+              backgroundImage: `radial-gradient(circle at 50% 50%, ${isDark ? 'rgba(30, 41, 59, 0.4)' : 'rgba(148, 163, 184, 0.2)'} 1px, transparent 1px)`,
+              backgroundSize: '40px 40px'
             }}>
           </div>
-          
+
           {/* Ambient colored spots */}
           <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-indigo-600/5 dark:bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none" aria-hidden="true"></div>
           <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-purple-600/5 dark:bg-purple-600/10 rounded-full blur-[100px] pointer-events-none" aria-hidden="true"></div>
 
-          <TopBar 
-            isDark={isDark} 
-            toggleTheme={toggleTheme} 
-            user={user} 
+          <TopBar
+            isDark={isDark}
+            toggleTheme={toggleTheme}
+            user={user}
             onProfileClick={() => setActiveTab('profile')}
             onMenuClick={() => setIsMobileMenuOpen(true)}
             onSelectStock={(symbol) => {
@@ -299,20 +306,18 @@ const App: React.FC = () => {
           />
 
           {/* Main Content Container */}
-          <div 
-            className={`flex-1 overflow-y-auto z-10 scroll-smooth safe-area-inset ${
-              activeTab === 'sen_assistant' 
-                ? 'p-0 overflow-hidden' 
+          <div
+            className={`flex-1 overflow-y-auto z-10 scroll-smooth safe-area-inset ${activeTab === 'sen_assistant'
+                ? 'p-0 overflow-hidden'
                 : 'p-2 md:p-4'
-            }`}
+              }`}
             role="region"
             aria-label={`Trang ${activeTab}`}
           >
-            <div className={`${
-              activeTab === 'sen_assistant' 
-                ? 'h-full w-full' 
+            <div className={`${activeTab === 'sen_assistant'
+                ? 'h-full w-full'
                 : 'w-full h-full'
-            }`}>
+              }`}>
               {renderContent()}
             </div>
           </div>
