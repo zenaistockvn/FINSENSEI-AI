@@ -36,6 +36,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
     // Stock Selection State
     const [selectedSymbol, setSelectedSymbol] = useState<string>('HPG');
     const [stockData, setStockData] = useState<SimplizeCompanyData | null>(null);
+    const [manualPrice, setManualPrice] = useState<number>(0);
     const [isLoading, setIsLoading] = useState(false);
 
     const [data, setData] = useState<any[]>([]);
@@ -64,6 +65,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
             const data = await getSimplizeCompanyData(symbol);
             if (data) {
                 setStockData(data);
+                setManualPrice(data.price_close);
             }
         } catch (error) {
             console.error('Error fetching stock data:', error);
@@ -78,13 +80,13 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
         } else {
             runBacktest();
         }
-    }, [initialInvestment, monthlyContribution, expectedReturn, years, inflationRate, stockData, calculationMode, backtestStartDate, backtestEndDate]);
+    }, [initialInvestment, monthlyContribution, expectedReturn, years, inflationRate, stockData, calculationMode, backtestStartDate, backtestEndDate, manualPrice]);
 
     const calculateProjection = () => {
         const monthlyRate = expectedReturn / 100 / 12;
         const monthlyInflation = inflationRate / 100 / 12;
         const totalMonths = years * 12;
-        const currentPrice = stockData?.price_close || 27000;
+        const currentRefPrice = manualPrice || stockData?.price_close || 27000;
 
         const monthlyBankRate = 0.06 / 12; // 6% / year
         let currentBankBalance = initialInvestment;
@@ -93,7 +95,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
         let currentBalance = initialInvestment;
         let currentRealBalance = initialInvestment;
         let totalInvested = initialInvestment;
-        let totalShares = initialInvestment / currentPrice;
+        let totalShares = initialInvestment / currentRefPrice;
 
         for (let month = 0; month <= totalMonths; month++) {
             if (month > 0) {
@@ -101,7 +103,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                 currentRealBalance = (currentRealBalance + monthlyContribution) * (1 + monthlyRate - monthlyInflation);
                 currentBankBalance = (currentBankBalance + monthlyContribution) * (1 + monthlyBankRate);
                 totalInvested += monthlyContribution;
-                totalShares += monthlyContribution / currentPrice;
+                totalShares += monthlyContribution / currentRefPrice;
             } else {
                 // Month 0: Initial state, assume bank balance starts same as investment
             }
@@ -112,6 +114,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                     label: `Năm ${month / 12}`,
                     balance: Math.round(currentBalance),
                     invested: Math.round(totalInvested),
+                    profit: Math.round(currentBalance - totalInvested),
                     realValue: Math.round(currentRealBalance),
                     bankBalance: Math.round(currentBankBalance)
                 });
@@ -125,7 +128,7 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
             realFutureValue: currentRealBalance,
             totalProfit: currentBalance - totalInvested,
             totalShares: Math.round(totalShares),
-            currentPrice,
+            currentPrice: currentRefPrice,
             historicalReturn: 0,
             backtestYears: 0,
             bankBalance: currentBankBalance
@@ -165,8 +168,14 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                 balance: totalShares * history[0].close_price
             }];
 
-            // Consistent valuation: use the last price in the backtest period
-            const currentPriceForValuation = history[history.length - 1].close_price;
+            // Consistent valuation: use manual price if provided and looking at current period,
+            // otherwise check if we can use the latest stock data for better accuracy
+            const isCurrentPeriod = new Date().toISOString().slice(0, 7) === backtestEndDate.slice(0, 7);
+            const latestPrice = manualPrice || stockData?.price_close || 0;
+
+            const currentPriceForValuation = (calculationMode === 'backtest' && isCurrentPeriod && latestPrice > 0)
+                ? latestPrice
+                : (history[history.length - 1].close_price);
 
             history.forEach((point, index) => {
                 const buyPrice = point.close_price;
@@ -200,10 +209,25 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                     label: point.trading_date.substring(0, 7),
                     balance: Math.round(totalShares * point.close_price),
                     invested: Math.round(totalInvested),
+                    profit: Math.round(totalShares * point.close_price - totalInvested),
                     realValue: Math.round(totalShares * point.close_price),
                     bankBalance: Math.round(currentBankBalance)
                 });
             });
+
+            // If we're showing the current period, add a final data point for "Today/Current" 
+            // to connect the start-of-month contribution to the current real-time value
+            if (isCurrentPeriod && currentPriceForValuation > 0) {
+                chartData.push({
+                    monthIndex: history.length,
+                    label: 'Hiện tại',
+                    balance: Math.round(totalShares * currentPriceForValuation),
+                    invested: Math.round(totalInvested),
+                    profit: Math.round(totalShares * currentPriceForValuation - totalInvested),
+                    realValue: Math.round(totalShares * currentPriceForValuation),
+                    bankBalance: Math.round(currentBankBalance) // Assume consistent for the partial month or just keep same
+                });
+            }
 
             const futureValue = totalShares * currentPriceForValuation;
             const absoluteReturn = ((futureValue - totalInvested) / totalInvested) * 100;
@@ -357,8 +381,22 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                                     </div>
                                 </div>
                                 {stockData && (
-                                    <div className="flex items-center justify-between px-1">
-                                        <span className="text-[10px] text-slate-400">Giá hiện tại: <span className="text-indigo-500 font-bold">{formatCurrency(stockData.price_close)}</span></span>
+                                    <div className="flex items-center justify-between px-1 mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-slate-400">Giá hiện tại:</span>
+                                            <div className="relative group">
+                                                <input
+                                                    type="number"
+                                                    value={manualPrice}
+                                                    onChange={(e) => setManualPrice(Number(e.target.value))}
+                                                    className="w-24 bg-transparent text-indigo-500 font-bold text-sm border-b border-dashed border-indigo-500/30 focus:border-indigo-500 outline-none text-right px-1"
+                                                />
+                                                <span className="text-[10px] text-indigo-500 font-bold ml-1">₫</span>
+                                                <div className="absolute top-full left-0 hidden group-hover:block z-10 bg-black text-white text-[10px] p-1 rounded mt-1 whitespace-nowrap">
+                                                    Nhập để điều chỉnh giá
+                                                </div>
+                                            </div>
+                                        </div>
                                         {stockData.dividend_yield > 0 && (
                                             <span className="text-[10px] text-emerald-500">Cổ tức: {stockData.dividend_yield}%</span>
                                         )}
@@ -517,15 +555,18 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
 
                         <div className="bg-white dark:bg-[#111827] rounded-2xl p-5 shadow-lg border border-slate-200 dark:border-white/5 sm:col-span-2 xl:col-span-1">
                             <div className="flex items-center gap-3 mb-3">
-                                <div className="p-2 bg-orange-500/10 rounded-lg text-orange-500">
-                                    {calculationMode === 'projection' ? <ShieldCheck size={20} /> : <RefreshCw size={20} />}
+                                <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500">
+                                    <Target size={20} />
                                 </div>
                                 <span className="text-sm font-medium text-slate-500">
-                                    {calculationMode === 'projection' ? 'Giá trị sau lạm phát' : 'Tỷ suất sinh lời (ROI)'}
+                                    Lợi nhuận ròng
                                 </span>
                             </div>
-                            <div className={`text-2xl font-bold ${calculationMode === 'projection' ? 'text-orange-500' : (results.historicalReturn >= 0 ? 'text-emerald-500' : 'text-rose-500')}`}>
-                                {calculationMode === 'projection' ? formatCurrency(results.realFutureValue) : `${results.historicalReturn.toFixed(1)}%`}
+                            <div className={`text-2xl font-bold ${results.totalProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {formatCurrency(results.totalProfit)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1">
+                                Hiệu suất: {calculationMode === 'projection' ? 'Dự kiến' : `${results.historicalReturn.toFixed(1)}%`}
                             </div>
                         </div>
                     </div>
@@ -543,12 +584,16 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                                     <span className="text-slate-500">Tài sản</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                    <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                                    <span className="text-slate-500">Lợi nhuận</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
                                     <div className="w-3 h-3 rounded-full bg-slate-400"></div>
                                     <span className="text-slate-500">Vốn gốc</span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <div className="w-3 h-3 rounded-full bg-emerald-500/50"></div>
-                                    <span className="text-slate-500">Gửi tiết kiệm (6%)</span>
+                                    <div className="w-3 h-3 rounded-full bg-emerald-500/30"></div>
+                                    <span className="text-slate-500">Gửi Tiết kiệm</span>
                                 </div>
                             </div>
                         </div>
@@ -566,6 +611,10 @@ const AccumulationTool: React.FC<AccumulationToolProps> = ({ isDark = true }) =>
                                     </linearGradient>
                                     <linearGradient id="colorBank" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                    </linearGradient>
+                                    <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
                                         <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
