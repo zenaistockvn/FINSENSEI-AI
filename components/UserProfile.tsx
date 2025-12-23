@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, PlanType } from '../types';
-import { 
+import {
   Check, Shield, Crown, CreditCard, Star, User as UserIcon, Edit3, Calendar, Mail,
   Bell, BellOff, Eye, EyeOff, Lock, LogOut, Trash2, ChevronRight, Activity,
   TrendingUp, Clock, Settings, Smartphone, Globe, Moon, Sun, Save, X,
@@ -27,7 +27,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
     email: user.email,
     phone: '0912 345 678'
   });
-  
+
   // Settings states
   const [notifications, setNotifications] = useState({
     priceAlert: true,
@@ -35,7 +35,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
     weeklyReport: false,
     marketOpen: true
   });
-  
+
   const [privacy, setPrivacy] = useState({
     showProfile: true,
     showActivity: false
@@ -99,7 +99,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
     {
       id: 'expert',
       name: 'Expert',
-      price: '499.000đ',
+      price: '2.999.000đ',
       period: '/ tháng',
       icon: Crown,
       color: 'text-indigo-500',
@@ -135,13 +135,13 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
       {/* User Header Card */}
       <div className="glass-panel p-6 md:p-8 rounded-2xl relative overflow-hidden border-t border-slate-200 dark:border-white/5">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
-        
+
         <div className="relative z-10 flex flex-col md:flex-row items-center gap-6 md:gap-8">
           <div className="relative group">
             <div className="w-28 h-28 md:w-32 md:h-32 rounded-full p-1 bg-gradient-to-tr from-indigo-500 to-purple-500">
               <img src={user.avatar} alt={user.name} className="w-full h-full rounded-full object-cover border-4 border-white dark:border-[#0b0f19]" />
             </div>
-            <button 
+            <button
               onClick={() => setIsEditing(true)}
               className="absolute bottom-2 right-2 bg-slate-900 text-white p-2 rounded-full border-2 border-white dark:border-[#0b0f19] cursor-pointer hover:bg-indigo-600 transition-colors"
             >
@@ -160,14 +160,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
                 <input
                   type="text"
                   value={editForm.name}
-                  onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                   className="w-full md:w-auto px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Họ và tên"
                 />
                 <input
                   type="email"
                   value={editForm.email}
-                  onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                   className="w-full md:w-auto px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="Email"
                 />
@@ -239,7 +239,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
             <BarChart3 size={24} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />
             <span className="text-sm text-slate-600 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400">Báo cáo</span>
           </button>
-          <button 
+          <button
             onClick={() => setActiveSection('subscription')}
             className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 hover:from-amber-100 hover:to-orange-100 dark:hover:from-amber-900/30 dark:hover:to-orange-900/30 transition-colors group border border-amber-200/50 dark:border-amber-500/20"
           >
@@ -255,7 +255,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
           <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Clock className="text-indigo-500" size={20} /> Hoạt động gần đây
           </h3>
-          <button 
+          <button
             onClick={() => setActiveSection('activity')}
             className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
           >
@@ -287,7 +287,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
         <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
           <Activity className="text-indigo-500" /> Lịch sử hoạt động
         </h3>
-        
+
         <div className="space-y-4">
           {recentActivity.map((item) => (
             <div key={item.id} className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group">
@@ -386,14 +386,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
                 <div className="text-sm text-slate-500">{item.desc}</div>
               </div>
               <button
-                onClick={() => setNotifications({...notifications, [item.key]: !notifications[item.key as keyof typeof notifications]})}
-                className={`relative w-12 h-6 rounded-full transition-colors ${
-                  notifications[item.key as keyof typeof notifications] ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
-                }`}
+                onClick={() => setNotifications({ ...notifications, [item.key]: !notifications[item.key as keyof typeof notifications] })}
+                className={`relative w-12 h-6 rounded-full transition-colors ${notifications[item.key as keyof typeof notifications] ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
+                  }`}
               >
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                  notifications[item.key as keyof typeof notifications] ? 'translate-x-7' : 'translate-x-1'
-                }`}></div>
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${notifications[item.key as keyof typeof notifications] ? 'translate-x-7' : 'translate-x-1'
+                  }`}></div>
               </button>
             </div>
           ))}
@@ -415,14 +413,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
               </div>
             </div>
             <button
-              onClick={() => setPrivacy({...privacy, showProfile: !privacy.showProfile})}
-              className={`relative w-12 h-6 rounded-full transition-colors ${
-                privacy.showProfile ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
-              }`}
+              onClick={() => setPrivacy({ ...privacy, showProfile: !privacy.showProfile })}
+              className={`relative w-12 h-6 rounded-full transition-colors ${privacy.showProfile ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
+                }`}
             >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                privacy.showProfile ? 'translate-x-7' : 'translate-x-1'
-              }`}></div>
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${privacy.showProfile ? 'translate-x-7' : 'translate-x-1'
+                }`}></div>
             </button>
           </div>
         </div>
@@ -501,17 +497,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
       {/* Current Plan */}
       <div className="glass-panel p-6 rounded-2xl border-t border-slate-200 dark:border-white/5">
         <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Gói hiện tại của bạn</h3>
-        <div className={`p-4 rounded-xl border-2 ${
-          user.plan === 'expert' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' :
-          user.plan === 'vip' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' :
-          'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800'
-        }`}>
+        <div className={`p-4 rounded-xl border-2 ${user.plan === 'expert' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' :
+            user.plan === 'vip' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' :
+              'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800'
+          }`}>
           <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
-              user.plan === 'expert' ? 'bg-indigo-500 text-white' :
-              user.plan === 'vip' ? 'bg-amber-500 text-white' :
-              'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-            }`}>
+            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${user.plan === 'expert' ? 'bg-indigo-500 text-white' :
+                user.plan === 'vip' ? 'bg-amber-500 text-white' :
+                  'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+              }`}>
               {user.plan === 'expert' ? <Crown size={28} /> : user.plan === 'vip' ? <Star size={28} /> : <UserIcon size={28} />}
             </div>
             <div className="flex-1">
@@ -534,16 +528,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
         <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
           <CreditCard className="text-indigo-500" /> Nâng cấp đặc quyền
         </h2>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {plans.map((plan) => (
-            <div 
+            <div
               key={plan.id}
-              className={`relative rounded-2xl p-6 border transition-all duration-300 flex flex-col ${plan.bg} ${plan.border} ${
-                user.plan === plan.id 
-                  ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-[#050511]' 
+              className={`relative rounded-2xl p-6 border transition-all duration-300 flex flex-col ${plan.bg} ${plan.border} ${user.plan === plan.id
+                  ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-[#050511]'
                   : 'hover:-translate-y-2 hover:shadow-xl'
-              }`}
+                }`}
             >
               {plan.popular && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold px-4 py-1 rounded-full shadow-lg">
@@ -552,11 +545,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
               )}
 
               <div className="mb-6">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
-                  plan.id === 'expert' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' : 
-                  plan.id === 'vip' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 border border-amber-200' : 
-                  'bg-slate-200 dark:bg-slate-700 text-slate-600'
-                }`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${plan.id === 'expert' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30' :
+                    plan.id === 'vip' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 border border-amber-200' :
+                      'bg-slate-200 dark:bg-slate-700 text-slate-600'
+                  }`}>
                   <plan.icon size={24} />
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white">{plan.name}</h3>
@@ -569,9 +561,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
               <div className="space-y-4 mb-8 flex-1">
                 {plan.features.map((feature, idx) => (
                   <div key={idx} className="flex items-start gap-3">
-                    <div className={`mt-0.5 rounded-full p-0.5 ${
-                      user.plan === plan.id ? 'bg-indigo-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
-                    }`}>
+                    <div className={`mt-0.5 rounded-full p-0.5 ${user.plan === plan.id ? 'bg-indigo-500 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
+                      }`}>
                       <Check size={12} />
                     </div>
                     <span className="text-sm text-slate-600 dark:text-slate-300">{feature}</span>
@@ -582,15 +573,14 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
               <button
                 onClick={() => onUpgrade(plan.id as PlanType)}
                 disabled={user.plan === plan.id || (user.plan === 'expert' && plan.id !== 'expert')}
-                className={`w-full py-3 rounded-xl font-bold transition-all ${
-                  user.plan === plan.id
+                className={`w-full py-3 rounded-xl font-bold transition-all ${user.plan === plan.id
                     ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 cursor-default'
                     : plan.id === 'expert'
                       ? 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/30'
                       : plan.id === 'vip'
                         ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white shadow-lg shadow-amber-500/30'
                         : 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-700'
-                }`}
+                  }`}
               >
                 {user.plan === plan.id ? 'Đang sử dụng' : plan.cta}
               </button>
@@ -612,11 +602,10 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, onUpgrade, isDark }) =>
                 <button
                   key={item.id}
                   onClick={() => setActiveSection(item.id as typeof activeSection)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${
-                    activeSection === item.id
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left ${activeSection === item.id
                       ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-medium'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
+                    }`}
                 >
                   <item.icon size={20} />
                   <span>{item.label}</span>
