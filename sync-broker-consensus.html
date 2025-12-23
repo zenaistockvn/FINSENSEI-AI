@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Sync Broker Consensus (Dữ liệu Báo cáo Mới nhất)</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            background: #0f172a;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn:hover {
+            background: #2563eb;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .success {
+            background: #059669;
+        }
+
+        .error {
+            background: #dc2626;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #334155;
+        }
+
+        th {
+            color: #94a3b8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📊 Đồng thuận CTCK (Broker Consensus)</h1>
+        <p>Dữ liệu được tổng hợp từ các báo cáo phân tích mới nhất (Tháng 12/2024)</p>
+
+        <button class="btn" onclick="syncData()">🚀 Đồng bộ vào Database</button>
+
+        <div id="status" class="status" style="display: none;"></div>
+
+        <h3>Dữ liệu chuẩn bị đồng bộ:</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã CP</th>
+                    <th>CTCK</th>
+                    <th>Khuyến nghị</th>
+                    <th>Giá mục tiêu</th>
+                    <th>Luận điểm (Tóm tắt)</th>
+                </tr>
+            </thead>
+            <tbody id="preview"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        // Dữ liệu mới nhất tìm được từ search engine (Cập nhật tháng 12/2025)
+        const LATEST_RECOMMENDATIONS = [
+            // VN30 Stocks
+            { symbol: 'HPG', broker: 'DSC', action: 'MUA', price: 35800, date: '2025-12-23', rationale: 'Lợi nhuận mảng thép phục hồi mạnh, Dung Quất 2 đi vào hoạt động 2025-2026' },
+            { symbol: 'HPG', broker: 'AGR', action: 'MUA', price: 28500, date: '2025-12-23', rationale: 'Tín hiệu hồi phục rõ nét, khối ngoại mua ròng trở lại' },
+            { symbol: 'FPT', broker: 'Mirae Asset', action: 'KHẢ QUAN', price: 0, date: '2025-12-23', rationale: 'Mảng công nghệ và giáo dục tăng trưởng 2 con số, mở rộng AI tại Nhật Bản' },
+            { symbol: 'MWG', broker: 'BVSC', action: 'KHẢ QUAN', price: 91300, date: '2025-12-23', rationale: 'Triển vọng lợi nhuận 2026 tích cực, BHX tăng trưởng bền vững' },
+            { symbol: 'MWG', broker: 'MBS', action: 'MUA', price: 81700, date: '2025-12-23', rationale: 'Lợi nhuận ròng 2025 dự kiến đạt hơn 5000 tỷ' },
+            { symbol: 'TCB', broker: 'Mirae Asset', action: 'MUA', price: 0, date: '2025-12-23', rationale: 'Tăng trưởng tín dụng 2025 dự phóng 24.7%, định giá P/B hấp dẫn' },
+            { symbol: 'VCB', broker: 'Vietstock', action: 'MUA', price: 74100, date: '2025-12-23', rationale: 'Chất lượng tài sản tốt đầu ngành, hưởng lợi từ nới lỏng tiền tệ' },
+            { symbol: 'VIC', broker: 'Mirae Asset', action: 'MUA', price: 55500, date: '2025-12-23', rationale: 'Mảng bất động sản hồi phục, dòng tiền cải thiện' },
+            { symbol: 'VNM', broker: 'DSC', action: 'MUA', price: 82100, date: '2025-12-23', rationale: 'Biên lợi nhuận cải thiện nhờ giá nguyên liệu giảm, định giá P/E thấp kỷ lục' },
+            { symbol: 'STB', broker: 'ASEAN SC', action: 'MUA', price: 0, date: '2025-12-23', rationale: 'Xử lý nợ xấu hoàn tất, kỳ vọng tái cơ cấu thành công' },
+            { symbol: 'ACB', broker: 'SSI', action: 'KHẢ QUAN', price: 36000, date: '2025-12-23', rationale: 'Chất lượng tài sản tốt, NIM ổn định, ROE cao' },
+            { symbol: 'MBB', broker: 'ACBS', action: 'KHẢ QUAN', price: 29000, date: '2025-12-23', rationale: 'Định giá rẻ so với tiềm năng tăng trưởng' },
+            { symbol: 'MSN', broker: 'KBSV', action: 'MUA', price: 98800, date: '2025-12-23', rationale: 'Mảng tiêu dùng dẫn dắt tăng trưởng, MCH dự kiến chuyển sàn' },
+
+            // Mid-cap / Others
+            { symbol: 'PVS', broker: 'SSI', action: 'TRUNG LẬP', price: 35000, date: '2025-12-23', rationale: 'Dự án Lô B - Ô Môn là động lực chính' },
+            { symbol: 'DBC', broker: 'VCBS', action: 'TRUNG LẬP', price: 31500, date: '2025-12-23', rationale: 'Biến động giá heo hơi ảnh hưởng lợi nhuận' },
+            { symbol: 'GEX', broker: 'BSC', action: 'MUA', price: 53100, date: '2025-12-23', rationale: 'Mảng thiết bị điện và khu công nghiệp tăng trưởng' }
+        ];
+
+        // Hiển thị preview
+        const tbody = document.getElementById('preview');
+        LATEST_RECOMMENDATIONS.forEach(rec => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="color: #38bdf8; font-weight: bold;">${rec.symbol}</td>
+                <td>${rec.broker}</td>
+                <td><span style="padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold; background: ${getColor(rec.action)} bg-opacity-20; color: ${getColor(rec.action)}">${rec.action}</span></td>
+                <td>${rec.price ? new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rec.price) : 'N/A'}</td>
+                <td>${rec.rationale || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        function getColor(action) {
+            const act = action.toUpperCase();
+            if (act.includes('MUA') || act.includes('KHẢ QUAN') || act.includes('OUTPERFORM')) return '#4ade80'; // Green
+            if (act.includes('BÁN') || act.includes('KÉM')) return '#f87171'; // Red
+            return '#fbbf24'; // Yellow/Neutral
+        }
+
+        async function syncData() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = 'Đang đồng bộ...';
+            statusDiv.className = 'status';
+
+            try {
+                // Xóa dữ liệu cũ của tháng này nếu muốn (optional)
+                // await fetch(`${SUPABASE_URL}/rest/v1/broker_recommendations?recommendation_date=eq.2025-12-23`, { method: 'DELETE', headers: ... });
+
+                const records = LATEST_RECOMMENDATIONS.map(rec => ({
+                    symbol: rec.symbol,
+                    broker_code: rec.broker,
+                    broker_name: getBrokerName(rec.broker),
+                    action: rec.action,
+                    target_price: rec.price,
+                    recommendation_date: rec.date,
+                    rationale: rec.rationale || 'Cập nhật từ báo cáo phân tích mới nhất tháng 12/2025',
+                    created_at: new Date().toISOString()
+                }));
+
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/broker_recommendations`, {
+                    method: 'POST',
+                    headers: {
+                        "apikey": SUPABASE_KEY,
+                        "Authorization": `Bearer ${SUPABASE_KEY}`,
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
+                    },
+                    body: JSON.stringify(records)
+                });
+
+                if (response.ok) {
+                    statusDiv.textContent = '✅ Đã đồng bộ thành công dữ liệu mới nhất!';
+                    statusDiv.className = 'status success';
+                } else {
+                    throw new Error(await response.text());
+                }
+            } catch (error) {
+                statusDiv.textContent = '❌ Lỗi: ' + error.message;
+                statusDiv.className = 'status error';
+            }
+        }
+
+        function getBrokerName(code) {
+            const map = {
+                'SSI': 'CTCK SSI',
+                'BVSC': 'CTCK Bảo Việt',
+                'ACBS': 'CTCK ACB',
+                'VCBS': 'CTCK Vietcombank',
+                'VNDirect': 'CTCK VNDirect',
+                'BSC': 'CTCK BIDV',
+                'KBSV': 'CTCK KB Việt Nam',
+                'AGR': 'CTCK Agribank'
+            };
+            return map[code] || code;
+        }
+    </script>
+</body>
+
+</html>
