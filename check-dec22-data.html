@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiểm tra dữ liệu ngày 22/12 - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .container {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        h1 { color: #60a5fa; margin-bottom: 8px; }
+        .btn {
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 5px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-success { background: linear-gradient(45deg, #22c55e, #16a34a); }
+        .result {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #60a5fa; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #334155;
+        }
+        th { background: #334155; color: #f1f5f9; }
+        tr:hover { background: #334155; }
+        .highlight { background: #22c55e20 !important; }
+        .missing { background: #ef444420 !important; }
+        input {
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: #e2e8f0;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin: 5px;
+            width: 100px;
+        }
+        select {
+            background: #0f172a;
+            border: 1px solid #475569;
+            color: #e2e8f0;
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Kiểm tra & Sync dữ liệu ngày 23/12/2024</h1>
+        <p>Kiểm tra và đồng bộ dữ liệu ngày giao dịch mới nhất</p>
+        
+        <div style="margin: 20px 0;">
+            <label>Mã cổ phiếu:</label>
+            <input type="text" id="symbol" value="VNM" placeholder="VNM">
+            <button class="btn" onclick="checkDec22()">Kiểm tra ngày 22/12</button>
+            <button class="btn" onclick="checkRecentDays()">Xem 10 ngày gần nhất</button>
+            <button class="btn btn-success" onclick="syncMissingData()">Sync dữ liệu thiếu</button>
+        </div>
+        
+        <div id="result" class="result" style="display: none;"></div>
+        <div id="tableContainer"></div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Kiểm tra tất cả VN30</h2>
+        <button class="btn" onclick="checkAllVN30()">Kiểm tra VN30 ngày 22/12</button>
+        <div id="vn30Result"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        const headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        };
+
+        const VN30 = ['ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG', 
+                      'MBB', 'MSN', 'MWG', 'PLX', 'POW', 'SAB', 'SHB', 'SSB', 'SSI', 'STB', 
+                      'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE'];
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+        }
+
+        async function fetchFromSupabase(endpoint, params = "") {
+            const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        }
+
+        async function checkDec22() {
+            clearLog();
+            const symbol = document.getElementById('symbol').value.toUpperCase();
+            log(`🔍 Kiểm tra dữ liệu ${symbol} ngày 22/12/2024...`, 'info');
+            
+            try {
+                // Kiểm tra ngày 22/12/2024
+                const dec22 = await fetchFromSupabase("stock_prices", 
+                    `symbol=eq.${symbol}&trading_date=eq.2024-12-22`);
+                
+                if (dec22.length > 0) {
+                    log(`✅ CÓ dữ liệu ngày 22/12/2024!`, 'success');
+                    log(`   Open: ${dec22[0].open_price.toLocaleString()}`, 'info');
+                    log(`   High: ${dec22[0].high_price.toLocaleString()}`, 'info');
+                    log(`   Low: ${dec22[0].low_price.toLocaleString()}`, 'info');
+                    log(`   Close: ${dec22[0].close_price.toLocaleString()}`, 'info');
+                    log(`   Volume: ${dec22[0].volume.toLocaleString()}`, 'info');
+                } else {
+                    log(`❌ KHÔNG có dữ liệu ngày 22/12/2024!`, 'error');
+                    log(`   Lưu ý: Ngày 22/12/2024 là Chủ Nhật - thị trường đóng cửa!`, 'warning');
+                }
+                
+                // Kiểm tra ngày 20/12 và 23/12
+                const dec20 = await fetchFromSupabase("stock_prices", 
+                    `symbol=eq.${symbol}&trading_date=eq.2024-12-20`);
+                const dec23 = await fetchFromSupabase("stock_prices", 
+                    `symbol=eq.${symbol}&trading_date=eq.2024-12-23`);
+                
+                log(`\n📅 Kiểm tra các ngày lân cận:`, 'info');
+                log(`   20/12/2024 (Thứ 6): ${dec20.length > 0 ? '✅ Có' : '❌ Không'}`, dec20.length > 0 ? 'success' : 'error');
+                log(`   22/12/2024 (CN): ${dec22.length > 0 ? '✅ Có' : '⚠️ Không (cuối tuần)'}`, dec22.length > 0 ? 'success' : 'warning');
+                log(`   23/12/2024 (Thứ 2): ${dec23.length > 0 ? '✅ Có' : '❌ Không'}`, dec23.length > 0 ? 'success' : 'error');
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkRecentDays() {
+            clearLog();
+            const symbol = document.getElementById('symbol').value.toUpperCase();
+            log(`📊 Lấy 10 ngày gần nhất của ${symbol}...`, 'info');
+            
+            try {
+                const data = await fetchFromSupabase("stock_prices", 
+                    `symbol=eq.${symbol}&order=trading_date.desc&limit=15`);
+                
+                if (data.length === 0) {
+                    log(`❌ Không có dữ liệu cho ${symbol}`, 'error');
+                    return;
+                }
+                
+                log(`✅ Tìm thấy ${data.length} ngày giao dịch`, 'success');
+                
+                // Tạo bảng
+                let html = `<table>
+                    <tr>
+                        <th>Ngày</th>
+                        <th>Thứ</th>
+                        <th>Open</th>
+                        <th>High</th>
+                        <th>Low</th>
+                        <th>Close</th>
+                        <th>Volume</th>
+                    </tr>`;
+                
+                const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                
+                data.forEach(d => {
+                    const date = new Date(d.trading_date);
+                    const dayOfWeek = dayNames[date.getDay()];
+                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                    const isDec22 = d.trading_date === '2024-12-22';
+                    
+                    html += `<tr class="${isDec22 ? 'highlight' : ''}">
+                        <td>${d.trading_date}</td>
+                        <td>${dayOfWeek}</td>
+                        <td>${d.open_price.toLocaleString()}</td>
+                        <td>${d.high_price.toLocaleString()}</td>
+                        <td>${d.low_price.toLocaleString()}</td>
+                        <td>${d.close_price.toLocaleString()}</td>
+                        <td>${d.volume.toLocaleString()}</td>
+                    </tr>`;
+                });
+                
+                html += '</table>';
+                document.getElementById('tableContainer').innerHTML = html;
+                
+                // Kiểm tra ngày thiếu
+                log(`\n🔍 Kiểm tra ngày thiếu trong tuần gần nhất...`, 'info');
+                const dates = data.map(d => d.trading_date);
+                
+                // Tạo danh sách ngày giao dịch dự kiến (T2-T6)
+                const today = new Date();
+                const expectedDates = [];
+                for (let i = 0; i < 10; i++) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    if (d.getDay() !== 0 && d.getDay() !== 6) { // Không phải T7, CN
+                        expectedDates.push(d.toISOString().split('T')[0]);
+                    }
+                }
+                
+                const missingDates = expectedDates.filter(d => !dates.includes(d));
+                if (missingDates.length > 0) {
+                    log(`⚠️ Các ngày thiếu dữ liệu: ${missingDates.join(', ')}`, 'warning');
+                } else {
+                    log(`✅ Đủ dữ liệu các ngày giao dịch gần đây`, 'success');
+                }
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkAllVN30() {
+            const container = document.getElementById('vn30Result');
+            container.innerHTML = '<p>🔄 Đang kiểm tra...</p>';
+            
+            const results = [];
+            
+            for (const symbol of VN30) {
+                try {
+                    // Kiểm tra ngày 20/12 (Thứ 6) và 23/12 (Thứ 2)
+                    const dec20 = await fetchFromSupabase("stock_prices", 
+                        `symbol=eq.${symbol}&trading_date=eq.2024-12-20`);
+                    const dec23 = await fetchFromSupabase("stock_prices", 
+                        `symbol=eq.${symbol}&trading_date=eq.2024-12-23`);
+                    
+                    results.push({
+                        symbol,
+                        dec20: dec20.length > 0,
+                        dec23: dec23.length > 0,
+                        dec20Data: dec20[0],
+                        dec23Data: dec23[0]
+                    });
+                } catch (e) {
+                    results.push({ symbol, dec20: false, dec23: false, error: e.message });
+                }
+            }
+            
+            // Tạo bảng kết quả
+            let html = `<table>
+                <tr>
+                    <th>Mã</th>
+                    <th>20/12 (T6)</th>
+                    <th>23/12 (T2)</th>
+                    <th>Trạng thái</th>
+                </tr>`;
+            
+            let missingCount = 0;
+            results.forEach(r => {
+                const status = r.dec20 && r.dec23 ? '✅ OK' : '❌ Thiếu';
+                if (!r.dec20 || !r.dec23) missingCount++;
+                
+                html += `<tr class="${!r.dec20 || !r.dec23 ? 'missing' : ''}">
+                    <td><strong>${r.symbol}</strong></td>
+                    <td>${r.dec20 ? '✅' : '❌'}</td>
+                    <td>${r.dec23 ? '✅' : '❌'}</td>
+                    <td>${status}</td>
+                </tr>`;
+            });
+            
+            html += '</table>';
+            html += `<p style="margin-top: 16px;">
+                <strong>Tổng kết:</strong> ${VN30.length - missingCount}/${VN30.length} mã có đủ dữ liệu
+                ${missingCount > 0 ? `<br><span class="warning">⚠️ ${missingCount} mã thiếu dữ liệu</span>` : ''}
+            </p>`;
+            
+            container.innerHTML = html;
+        }
+
+        async function syncMissingData() {
+            clearLog();
+            const symbol = document.getElementById('symbol').value.toUpperCase();
+            log(`🔄 Đang sync dữ liệu thiếu cho ${symbol}...`, 'info');
+            
+            try {
+                // Lấy dữ liệu từ Cafef API
+                log(`📡 Gọi Cafef API...`, 'info');
+                const cafefUrl = `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${symbol}&StartDate=&EndDate=&PageIndex=1&PageSize=30`;
+                
+                const response = await fetch(cafefUrl);
+                if (!response.ok) throw new Error(`Cafef API error: ${response.status}`);
+                
+                const data = await response.json();
+                
+                if (!data.Data?.Data || data.Data.Data.length === 0) {
+                    log(`❌ Không có dữ liệu từ Cafef`, 'error');
+                    return;
+                }
+                
+                log(`✅ Nhận được ${data.Data.Data.length} ngày từ Cafef`, 'success');
+                
+                // Convert và insert vào Supabase
+                const records = data.Data.Data.map(item => {
+                    const parts = item.Ngay.split('/');
+                    const isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    return {
+                        symbol: symbol,
+                        trading_date: isoDate,
+                        open_price: item.GiaMoCua * 1000,
+                        high_price: item.GiaCaoNhat * 1000,
+                        low_price: item.GiaThapNhat * 1000,
+                        close_price: item.GiaDongCua * 1000,
+                        volume: item.KhoiLuongKhopLenh
+                    };
+                });
+                
+                log(`📝 Chuẩn bị insert ${records.length} bản ghi...`, 'info');
+                
+                // Upsert vào Supabase
+                const insertResponse = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                    method: 'POST',
+                    headers: {
+                        ...headers,
+                        "Prefer": "resolution=merge-duplicates"
+                    },
+                    body: JSON.stringify(records)
+                });
+                
+                if (insertResponse.ok) {
+                    log(`✅ Đã sync thành công ${records.length} bản ghi!`, 'success');
+                    log(`🔄 Đang kiểm tra lại...`, 'info');
+                    setTimeout(checkRecentDays, 1000);
+                } else {
+                    const errorText = await insertResponse.text();
+                    log(`❌ Lỗi insert: ${errorText}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto check on load
+        window.addEventListener('load', () => {
+            setTimeout(checkDec22, 500);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sync dữ liệu ngày 22/12/2025 - FinSensei AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .container {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        h1 { color: #60a5fa; margin-bottom: 8px; }
+        h2 { color: #94a3b8; font-size: 18px; }
+        .btn {
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 5px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-success { background: linear-gradient(45deg, #22c55e, #16a34a); }
+        .btn-warning { background: linear-gradient(45deg, #f59e0b, #d97706); }
+        .result {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .success { color: #22c55e; }
+        .error { color: #ef4444; }
+        .warning { color: #f59e0b; }
+        .info { color: #60a5fa; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #334155; color: #f1f5f9; }
+        tr:hover { background: #334155; }
+        .highlight { background: #22c55e20 !important; }
+        .missing { background: #ef444420 !important; }
+        .progress { background: #334155; border-radius: 8px; height: 24px; margin: 16px 0; overflow: hidden; }
+        .progress-bar { background: linear-gradient(45deg, #22c55e, #16a34a); height: 100%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 16px 0; }
+        .stat-card { background: #334155; border-radius: 12px; padding: 16px; text-align: center; }
+        .stat-value { font-size: 28px; font-weight: bold; color: #22c55e; }
+        .stat-label { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Sync dữ liệu ngày 22/12/2025</h1>
+        <p>Ngày 22/12/2025 (Thứ 2) - Dữ liệu giao dịch hôm qua chưa được sync</p>
+        
+        <div style="margin: 20px 0;">
+            <button class="btn btn-success" onclick="syncAllVN30()" id="syncBtn">🚀 Sync VN30 ngày 22/12/2025</button>
+            <button class="btn" onclick="checkStatus()">🔍 Kiểm tra trạng thái</button>
+            <button class="btn btn-warning" onclick="syncAllVN100()">📊 Sync VN100 (đầy đủ)</button>
+        </div>
+        
+        <div class="progress" id="progressContainer" style="display: none;">
+            <div class="progress-bar" id="progressBar" style="width: 0%;">0%</div>
+        </div>
+        
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-card">
+                <div class="stat-value" id="syncedCount">0</div>
+                <div class="stat-label">Đã sync</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="failedCount">0</div>
+                <div class="stat-label">Lỗi</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label">Tổng cộng</div>
+            </div>
+        </div>
+        
+        <div id="result" class="result" style="display: none;"></div>
+        <div id="tableContainer"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = "https://trbiojajipzpqlnlghtt.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRyYmlvamFqaXB6cHFsbmxnaHR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYyMTg1NDEsImV4cCI6MjA4MTc5NDU0MX0.TOtVLQeFjes6NbnBTF6z-YPbFhSA-olvjJnAl60qhKQ";
+
+        const headers = {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+            "Content-Type": "application/json"
+        };
+
+        const VN30 = ['ACB', 'BCM', 'BID', 'BVH', 'CTG', 'FPT', 'GAS', 'GVR', 'HDB', 'HPG', 
+                      'MBB', 'MSN', 'MWG', 'PLX', 'POW', 'SAB', 'SHB', 'SSB', 'SSI', 'STB', 
+                      'TCB', 'TPB', 'VCB', 'VHM', 'VIB', 'VIC', 'VJC', 'VNM', 'VPB', 'VRE'];
+
+        const VN100_EXTRA = ['AAA', 'ANV', 'ASM', 'BWE', 'CII', 'CMG', 'DBC', 'DCM', 'DGC', 'DGW',
+                             'DIG', 'DPM', 'DXG', 'EIB', 'EVF', 'FRT', 'GMD', 'HAG', 'HCM', 'HDC',
+                             'HDG', 'HHV', 'HSG', 'HT1', 'IMP', 'KBC', 'KDC', 'KDH', 'KOS', 'LPB',
+                             'MSB', 'NKG', 'NLG', 'NT2', 'NVL', 'OCB', 'PC1', 'PDR', 'PET', 'PHR',
+                             'PNJ', 'PPC', 'PVD', 'PVS', 'PVT', 'REE', 'SBT', 'SCS', 'SIP', 'SJS',
+                             'SSB', 'TCH', 'TLG', 'VCI', 'VGC', 'VHC', 'VND', 'VOS', 'VPI', 'VTP'];
+
+        let syncedCount = 0;
+        let failedCount = 0;
+
+        function log(message, type = 'info') {
+            const result = document.getElementById('result');
+            result.style.display = 'block';
+            const timestamp = new Date().toLocaleTimeString('vi-VN');
+            result.innerHTML += `<span class="${type}">[${timestamp}] ${message}</span>\n`;
+            result.scrollTop = result.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('result').innerHTML = '';
+            syncedCount = 0;
+            failedCount = 0;
+        }
+
+        function updateProgress(current, total) {
+            const percent = Math.round((current / total) * 100);
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressBar').textContent = percent + '%';
+            document.getElementById('syncedCount').textContent = syncedCount;
+            document.getElementById('failedCount').textContent = failedCount;
+            document.getElementById('totalCount').textContent = total;
+        }
+
+        async function fetchFromSupabase(endpoint, params = "") {
+            const url = `${SUPABASE_URL}/rest/v1/${endpoint}${params ? `?${params}` : ""}`;
+            const response = await fetch(url, { headers });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await response.json();
+        }
+
+        // Lấy dữ liệu từ Cafef API
+        async function getCafefData(symbol) {
+            try {
+                const url = `https://s.cafef.vn/Ajax/PageNew/DataHistory/PriceHistory.ashx?Symbol=${symbol}&StartDate=&EndDate=&PageIndex=1&PageSize=10`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`Cafef error: ${response.status}`);
+                
+                const data = await response.json();
+                if (!data.Data?.Data || data.Data.Data.length === 0) return null;
+                
+                // Tìm ngày 22/12/2025
+                const dec22Data = data.Data.Data.find(item => item.Ngay === '22/12/2025');
+                if (!dec22Data) return null;
+                
+                return {
+                    symbol: symbol,
+                    trading_date: '2025-12-22',
+                    open_price: dec22Data.GiaMoCua * 1000,
+                    high_price: dec22Data.GiaCaoNhat * 1000,
+                    low_price: dec22Data.GiaThapNhat * 1000,
+                    close_price: dec22Data.GiaDongCua * 1000,
+                    volume: dec22Data.KhoiLuongKhopLenh
+                };
+            } catch (error) {
+                console.error(`Cafef error for ${symbol}:`, error);
+                return null;
+            }
+        }
+
+        // Lấy dữ liệu từ SSI API (backup)
+        async function getSSIData(symbol) {
+            try {
+                const url = `https://iboard.ssi.com.vn/dchart/api/history?resolution=D&symbol=${symbol}&from=${Math.floor(Date.now()/1000) - 86400*5}&to=${Math.floor(Date.now()/1000)}`;
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                
+                const data = await response.json();
+                if (data.s !== 'ok' || !data.t || data.t.length === 0) return null;
+                
+                // Tìm ngày 22/12/2025
+                const targetTimestamp = new Date('2025-12-22').getTime() / 1000;
+                const idx = data.t.findIndex(t => {
+                    const d = new Date(t * 1000);
+                    return d.toISOString().split('T')[0] === '2025-12-22';
+                });
+                
+                if (idx === -1) return null;
+                
+                return {
+                    symbol: symbol,
+                    trading_date: '2025-12-22',
+                    open_price: data.o[idx] * 1000,
+                    high_price: data.h[idx] * 1000,
+                    low_price: data.l[idx] * 1000,
+                    close_price: data.c[idx] * 1000,
+                    volume: data.v[idx]
+                };
+            } catch (error) {
+                return null;
+            }
+        }
+
+        async function syncSymbol(symbol) {
+            // Kiểm tra đã có chưa
+            const existing = await fetchFromSupabase("stock_prices", 
+                `symbol=eq.${symbol}&trading_date=eq.2025-12-22`);
+            
+            if (existing.length > 0) {
+                log(`⏭️ ${symbol}: Đã có dữ liệu`, 'info');
+                syncedCount++;
+                return true;
+            }
+            
+            // Thử Cafef trước
+            let data = await getCafefData(symbol);
+            
+            // Nếu Cafef không có, thử SSI
+            if (!data) {
+                data = await getSSIData(symbol);
+            }
+            
+            if (!data) {
+                log(`❌ ${symbol}: Không tìm thấy dữ liệu ngày 22/12/2025`, 'error');
+                failedCount++;
+                return false;
+            }
+            
+            // Insert vào Supabase
+            const insertResponse = await fetch(`${SUPABASE_URL}/rest/v1/stock_prices`, {
+                method: 'POST',
+                headers: {
+                    ...headers,
+                    "Prefer": "resolution=merge-duplicates"
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (insertResponse.ok) {
+                log(`✅ ${symbol}: ${data.close_price.toLocaleString()} VND (Vol: ${data.volume.toLocaleString()})`, 'success');
+                syncedCount++;
+                return true;
+            } else {
+                const errorText = await insertResponse.text();
+                log(`❌ ${symbol}: Lỗi insert - ${errorText}`, 'error');
+                failedCount++;
+                return false;
+            }
+        }
+
+        async function syncAllVN30() {
+            clearLog();
+            document.getElementById('syncBtn').disabled = true;
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('stats').style.display = 'grid';
+            
+            log('🚀 Bắt đầu sync VN30 ngày 22/12/2025...', 'info');
+            log(`📅 Ngày: 22/12/2025 (Thứ 2)`, 'info');
+            log('', 'info');
+            
+            for (let i = 0; i < VN30.length; i++) {
+                await syncSymbol(VN30[i]);
+                updateProgress(i + 1, VN30.length);
+                await new Promise(r => setTimeout(r, 300)); // Delay để tránh rate limit
+            }
+            
+            log('', 'info');
+            log(`✅ Hoàn thành! Đã sync: ${syncedCount}/${VN30.length}`, 'success');
+            if (failedCount > 0) {
+                log(`⚠️ Lỗi: ${failedCount} mã (có thể API chưa cập nhật)`, 'warning');
+            }
+            
+            document.getElementById('syncBtn').disabled = false;
+        }
+
+        async function syncAllVN100() {
+            clearLog();
+            document.getElementById('progressContainer').style.display = 'block';
+            document.getElementById('stats').style.display = 'grid';
+            
+            const allSymbols = [...VN30, ...VN100_EXTRA];
+            log(`🚀 Bắt đầu sync VN100 (${allSymbols.length} mã) ngày 22/12/2025...`, 'info');
+            log('', 'info');
+            
+            for (let i = 0; i < allSymbols.length; i++) {
+                await syncSymbol(allSymbols[i]);
+                updateProgress(i + 1, allSymbols.length);
+                await new Promise(r => setTimeout(r, 200));
+            }
+            
+            log('', 'info');
+            log(`✅ Hoàn thành! Đã sync: ${syncedCount}/${allSymbols.length}`, 'success');
+        }
+
+        async function checkStatus() {
+            clearLog();
+            log('🔍 Kiểm tra dữ liệu ngày 22/12/2025...', 'info');
+            
+            const results = [];
+            for (const symbol of VN30) {
+                const data = await fetchFromSupabase("stock_prices", 
+                    `symbol=eq.${symbol}&trading_date=eq.2025-12-22`);
+                results.push({ symbol, hasData: data.length > 0, data: data[0] });
+            }
+            
+            const hasData = results.filter(r => r.hasData).length;
+            const missing = results.filter(r => !r.hasData);
+            
+            log(`\n📊 Kết quả: ${hasData}/${VN30.length} mã có dữ liệu`, hasData === VN30.length ? 'success' : 'warning');
+            
+            if (missing.length > 0) {
+                log(`\n❌ Các mã thiếu dữ liệu:`, 'error');
+                missing.forEach(m => log(`   - ${m.symbol}`, 'error'));
+            }
+            
+            // Hiển thị bảng
+            let html = `<h3 style="color: #60a5fa; margin-top: 20px;">📋 Chi tiết VN30 ngày 22/12/2025</h3>
+            <table>
+                <tr><th>Mã</th><th>Trạng thái</th><th>Close</th><th>Volume</th></tr>`;
+            
+            results.forEach(r => {
+                html += `<tr class="${r.hasData ? 'highlight' : 'missing'}">
+                    <td><strong>${r.symbol}</strong></td>
+                    <td>${r.hasData ? '✅ Có' : '❌ Thiếu'}</td>
+                    <td>${r.data ? r.data.close_price.toLocaleString() : '-'}</td>
+                    <td>${r.data ? r.data.volume.toLocaleString() : '-'}</td>
+                </tr>`;
+            });
+            
+            html += '</table>';
+            document.getElementById('tableContainer').innerHTML = html;
+        }
+
+        // Auto check on load
+        window.addEventListener('load', () => {
+            setTimeout(checkStatus, 500);
+        });
+    </script>
+</body>
+</html>
